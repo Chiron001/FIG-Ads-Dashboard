@@ -21,7 +21,7 @@ interface ShopifyRawLineItem {
   variantTitle: string | null;
   sku: string | null;
   quantity: number;
-  product: { id: string; productType: string | null; vendor: string | null } | null;
+  product: { id: string; productType: string | null; vendor: string | null; handle: string | null } | null;
   variant: { id: string } | null;
   originalUnitPriceSet: ShopifyMoneySet;
   discountedTotalSet: ShopifyMoneySet;
@@ -60,6 +60,7 @@ export interface CanonicalShopifyLineItem {
   orderId: string;
   date: string; // IST, denormalized from the order
   productId: string | null;
+  productHandle: string | null;
   variantId: string | null;
   title: string | null;
   variantTitle: string | null;
@@ -95,7 +96,7 @@ const ORDERS_QUERY = `
                 variantTitle
                 sku
                 quantity
-                product { id productType vendor }
+                product { id productType vendor handle }
                 variant { id }
                 originalUnitPriceSet { shopMoney { amount currencyCode } }
                 discountedTotalSet { shopMoney { amount currencyCode } }
@@ -115,6 +116,51 @@ interface GraphQLResponse<T> {
 
 interface OrdersQueryResult {
   orders: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; edges: { node: ShopifyRawOrder }[] };
+}
+
+// --- sessions (Shopify Analytics, via ShopifyQL) ----------------------------
+//
+// Not part of the Orders/Products Admin API at all -- session/traffic data
+// lives in Shopify's separate analytics engine, queried via the
+// shopifyqlQuery field (confirmed live against this account's schema:
+// ShopifyqlQueryResponse { parseErrors: [String!]!, tableData: { columns, rows } }).
+// Deliberately NOT stored (see db/migrations/0007's header) -- fetched live
+// per request instead.
+const SHOPIFYQL_QUERY = `
+  query ShopifyQL($ql: String!) {
+    shopifyqlQuery(query: $ql) {
+      parseErrors
+      tableData {
+        columns { name }
+        rows
+      }
+    }
+  }
+`;
+
+interface ShopifyqlResult {
+  shopifyqlQuery: {
+    parseErrors: string[];
+    tableData: { columns: { name: string }[]; rows: Record<string, string>[] } | null;
+  };
+}
+
+async function shopifyQL(ql: string): Promise<Record<string, string>[]> {
+  const data = await shopifyGraphQL<ShopifyqlResult>(SHOPIFYQL_QUERY, { ql });
+  const { parseErrors, tableData } = data.shopifyqlQuery;
+  if (parseErrors.length > 0) {
+    throw new Error(`ShopifyQL parse error: ${parseErrors.join("; ")}`);
+  }
+  return tableData?.rows ?? [];
+}
+
+/** Extracts the product handle from a session's landing_page_path --
+ * "/products/wavy-floor-lamp-red" or a nested
+ * "/collections/x/products/wavy-floor-lamp-red" both -> "wavy-floor-lamp-red".
+ * Query strings/fragments are stripped, not part of the handle. */
+function extractProductHandle(landingPagePath: string): string | null {
+  const match = landingPagePath.match(/\/products\/([^/?#]+)/);
+  return match ? match[1] : null;
 }
 
 const MAX_RETRIES = 5;
@@ -188,6 +234,38 @@ export class ShopifyConnector {
     return orders;
   }
 
+  /** True site-wide session total for the range (ungrouped ShopifyQL query
+   * -> a single row, no truncation risk regardless of landing-page
+   * cardinality) -- this is the number the "Sessions" KPI and the overall
+   * CVR denominator use. */
+  async fetchTotalSessions(from: string, to: string): Promise<number> {
+    const rows = await shopifyQL(`FROM sessions SHOW sessions SINCE ${from} UNTIL ${to}`);
+    return Number(rows[0]?.sessions ?? 0);
+  }
+
+  /** Per-product session counts for the range, keyed by product handle.
+   * ShopifyQL caps any single query at 1000 result rows -- this store's
+   * landing-page long tail (query-string/UTM variants of the same product
+   * URL) blows past that even after filtering to /products/ paths, so
+   * ORDER BY sessions DESC ensures truncation only drops low-traffic
+   * variants, not real products. Aggregated by extracted handle here since
+   * multiple raw paths (direct + via a collection) can point at the same
+   * product. */
+  async fetchProductSessions(from: string, to: string): Promise<Map<string, number>> {
+    const rows = await shopifyQL(
+      `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' ` +
+        `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+    );
+
+    const byHandle = new Map<string, number>();
+    for (const row of rows) {
+      const handle = extractProductHandle(row.landing_page_path ?? "");
+      if (!handle) continue;
+      byHandle.set(handle, (byHandle.get(handle) ?? 0) + Number(row.sessions ?? 0));
+    }
+    return byHandle;
+  }
+
   normalize(orders: ShopifyRawOrder[]): { orders: CanonicalShopifyOrder[]; lineItems: CanonicalShopifyLineItem[] } {
     const canonicalOrders: CanonicalShopifyOrder[] = [];
     const canonicalLineItems: CanonicalShopifyLineItem[] = [];
@@ -217,6 +295,7 @@ export class ShopifyConnector {
           orderId: order.id,
           date,
           productId: li.product?.id ?? null,
+          productHandle: li.product?.handle ?? null,
           variantId: li.variant?.id ?? null,
           title: li.title,
           variantTitle: li.variantTitle,

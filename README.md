@@ -247,6 +247,41 @@ Build proceeds phase by phase per the project spec, committing after each.
         deployed frontend (`/shopify/status` → `connected: true`, KPI
         tiles and a 144-row product table populated with real SKUs/types/
         vendors) with zero console errors.
+      - **Sessions + CVR** (per-product and site-wide). Session/traffic data
+        isn't part of the Orders/Products Admin API at all — it lives in
+        Shopify's separate Analytics engine, queried live via
+        `shopifyqlQuery` (confirmed its real schema by introspection first
+        rather than guessing: `ShopifyqlQueryResponse { parseErrors:
+        [String!]!, tableData: { columns, rows } }`). Deliberately **not
+        stored** — `db/migrations/0007_shopify_product_handle.sql`'s header
+        explains why: ShopifyQL caps any single query at 1000 result rows,
+        and this store's landing-page long tail (query-string/UTM variants
+        of the same product URL) blows past that even for a single day's
+        breakdown, so a daily-grain fact table would silently be incomplete.
+        Instead:
+        - `ShopifyConnector.fetchTotalSessions` — one ungrouped ShopifyQL
+          call per request (`FROM sessions SHOW sessions SINCE … UNTIL …`),
+          always a single exact row regardless of path cardinality. Powers
+          the "Sessions" KPI and the site-wide CVR (`unitsSold / sessions`)
+          in `GET /shopify/summary`.
+        - `ShopifyConnector.fetchProductSessions` — session counts grouped
+          by `landing_page_path`, filtered to `/products/` paths,
+          `ORDER BY sessions DESC LIMIT 1000` so any truncation only drops
+          low-traffic long-tail variants rather than real products, then
+          aggregated in Node by product handle extracted from the path
+          (`/collections/x/products/wavy-floor-lamp-red` and
+          `/products/wavy-floor-lamp-red` both → `wavy-floor-lamp-red`).
+          Joined against `fact_shopify_line_items` by the new
+          `product_handle` column (0007) to add `sessions`/`cvr` per row in
+          `GET /shopify/products`.
+        - Both calls are wrapped so a ShopifyQL failure (plan/permission
+          restriction, transient error) degrades to `sessions: null` rather
+          than breaking the rest of the response — the order/product data
+          from Postgres always renders regardless.
+        - Verified live: total sessions 1,29,347 / CVR 1.37% for a 30-day
+          window, per-product sessions ranging from real single digits to
+          8k+ for top sellers, all confirmed via Playwright with zero
+          console errors.
 
 ## Structure
 

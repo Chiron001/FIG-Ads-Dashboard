@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { runShopifySync } from "../etl/shopifySync";
+import { ShopifyConnector } from "../connectors/shopify";
 import { env } from "../config/env";
 import type {
   ShopifyOrderSummary,
@@ -11,6 +12,35 @@ import type {
   ShopifyStatus,
   SyncLogEntry,
 } from "@fig/shared";
+
+function safeDivide(n: number, d: number | null): number | null {
+  return d != null && d > 0 ? n / d : null;
+}
+
+/** Live session totals (Shopify Analytics, via ShopifyQL) are a nice-to-have
+ * on top of the ground-truth order data this route otherwise serves entirely
+ * from Postgres -- if the ShopifyQL call fails for any reason (a plan/
+ * permission restriction, a transient API issue), the rest of the response
+ * still renders; sessions/cvr alone drop to null ("—" in the UI). */
+async function fetchTotalSessionsSafe(from: string, to: string): Promise<number | null> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchTotalSessions(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchTotalSessions failed, returning null:", err);
+    return null;
+  }
+}
+
+async function fetchProductSessionsSafe(from: string, to: string): Promise<Map<string, number>> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchProductSessions(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchProductSessions failed, returning empty map:", err);
+    return new Map();
+  }
+}
 
 export const shopifyRouter = Router();
 
@@ -81,20 +111,34 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const { rows } = await pool.query(
-      `select count(*)::float8 as orders,
-              coalesce(sum(total_price), 0)::float8 as revenue,
-              coalesce(sum(total_discounts), 0)::float8 as discounts
-       from fact_shopify_orders
-       where date between $1 and $2`,
-      [range.from, range.to]
-    );
-    const row = rows[0];
+    const [{ rows: orderRows }, { rows: lineItemRows }, sessions] = await Promise.all([
+      pool.query(
+        `select count(*)::float8 as orders,
+                coalesce(sum(total_price), 0)::float8 as revenue,
+                coalesce(sum(total_discounts), 0)::float8 as discounts
+         from fact_shopify_orders
+         where date between $1 and $2`,
+        [range.from, range.to]
+      ),
+      pool.query(
+        `select coalesce(sum(quantity), 0)::float8 as units_sold
+         from fact_shopify_line_items
+         where date between $1 and $2`,
+        [range.from, range.to]
+      ),
+      fetchTotalSessionsSafe(range.from, range.to),
+    ]);
+    const orderRow = orderRows[0];
+    const unitsSold = lineItemRows[0].units_sold;
+
     const summary: ShopifyOrderSummary = {
-      orders: row.orders,
-      revenue: row.revenue,
-      aov: row.orders > 0 ? row.revenue / row.orders : null,
-      discounts: row.discounts,
+      orders: orderRow.orders,
+      revenue: orderRow.revenue,
+      aov: orderRow.orders > 0 ? orderRow.revenue / orderRow.orders : null,
+      discounts: orderRow.discounts,
+      unitsSold,
+      sessions,
+      cvr: safeDivide(unitsSold, sessions),
     };
 
     const response: ShopifySummaryResponse = { from: range.from, to: range.to, summary };
@@ -110,33 +154,43 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const { rows } = await pool.query(
-      `select
-         product_id,
-         max(sku) as sku,
-         max(title) as title,
-         max(product_type) as product_type,
-         max(vendor) as vendor,
-         sum(quantity)::float8 as units_sold,
-         sum(line_total)::float8 as revenue,
-         count(distinct order_id)::float8 as orders
-       from fact_shopify_line_items
-       where date between $1 and $2
-       group by product_id
-       order by revenue desc`,
-      [range.from, range.to]
-    );
+    const [{ rows }, sessionsByHandle] = await Promise.all([
+      pool.query(
+        `select
+           product_id,
+           max(product_handle) as product_handle,
+           max(sku) as sku,
+           max(title) as title,
+           max(product_type) as product_type,
+           max(vendor) as vendor,
+           sum(quantity)::float8 as units_sold,
+           sum(line_total)::float8 as revenue,
+           count(distinct order_id)::float8 as orders
+         from fact_shopify_line_items
+         where date between $1 and $2
+         group by product_id
+         order by revenue desc`,
+        [range.from, range.to]
+      ),
+      fetchProductSessionsSafe(range.from, range.to),
+    ]);
 
-    const products: ShopifyProductRow[] = rows.map((r) => ({
-      productId: r.product_id ?? "unknown",
-      sku: r.sku,
-      title: r.title,
-      productType: r.product_type,
-      vendor: r.vendor,
-      unitsSold: r.units_sold,
-      revenue: r.revenue,
-      orders: r.orders,
-    }));
+    const products: ShopifyProductRow[] = rows.map((r) => {
+      const sessions = r.product_handle ? (sessionsByHandle.get(r.product_handle) ?? null) : null;
+      return {
+        productId: r.product_id ?? "unknown",
+        productHandle: r.product_handle,
+        sku: r.sku,
+        title: r.title,
+        productType: r.product_type,
+        vendor: r.vendor,
+        unitsSold: r.units_sold,
+        revenue: r.revenue,
+        orders: r.orders,
+        sessions,
+        cvr: safeDivide(r.units_sold, sessions),
+      };
+    });
 
     const response: ShopifyProductsResponse = { from: range.from, to: range.to, products };
     res.json(response);

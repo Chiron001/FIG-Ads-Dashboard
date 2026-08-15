@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ShopifyOrderSummary, ShopifyProductRow, SyncLogEntry } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchShopifySummary, fetchShopifyProducts, triggerShopifySync } from "../lib/api";
-import { formatCurrency, formatNumber } from "../lib/format";
+import { formatCurrency, formatNumber, formatPercent } from "../lib/format";
 import { formatRelativeTime } from "../lib/relativeTime";
 import { KpiTile } from "./KpiTile";
 import { ShopifyProductTable } from "./ShopifyProductTable";
@@ -96,11 +96,13 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         Ground-truth order data from Shopify — cross-check against each ad platform's own attributed revenue above; never sum the two, they measure different things.
       </div>
 
-      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 ${loading ? "opacity-60" : ""}`}>
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 ${loading ? "opacity-60" : ""}`}>
         <KpiTile label="Orders" value={formatNumber(summary?.orders)} accent={SHOPIFY_COLOR} />
         <KpiTile label="Revenue" value={formatCurrency(summary?.revenue)} accent={SHOPIFY_COLOR} />
         <KpiTile label="AOV" value={formatCurrency(summary?.aov)} accent={SHOPIFY_COLOR} />
         <KpiTile label="Discounts" value={formatCurrency(summary?.discounts)} accent={SHOPIFY_COLOR} />
+        <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" />
+        <KpiTile label="CVR" value={formatPercent(summary?.cvr)} accent={SHOPIFY_COLOR} sublabel="units sold / sessions" />
       </div>
 
       <ShopifyProductTable products={products} />

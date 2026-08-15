@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ShopifyProductRow } from "@fig/shared";
-import { formatCurrency, formatNumber } from "../lib/format";
+import { formatCurrency, formatNumber, formatPercent } from "../lib/format";
 
 interface Column {
   key: keyof ShopifyProductRow;
@@ -17,6 +17,8 @@ const COLUMNS: Column[] = [
   { key: "unitsSold", label: "Units Sold", align: "right", format: (r) => formatNumber(r.unitsSold) },
   { key: "orders", label: "Orders", align: "right", format: (r) => formatNumber(r.orders) },
   { key: "revenue", label: "Revenue", align: "right", format: (r) => formatCurrency(r.revenue) },
+  { key: "sessions", label: "Sessions", align: "right", format: (r) => formatNumber(r.sessions) },
+  { key: "cvr", label: "CVR", align: "right", format: (r) => formatPercent(r.cvr) },
 ];
 
 interface Props {

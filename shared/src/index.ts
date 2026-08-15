@@ -265,6 +265,14 @@ export interface ShopifyOrderSummary {
   revenue: number;
   aov: number | null; // null if orders = 0
   discounts: number;
+  unitsSold: number;
+  /** True site-wide session total for the range (Shopify Analytics, live --
+   * not stored, see db/migrations/0007). Null if the ShopifyQL call failed
+   * (e.g. a plan/permission restriction) -- the rest of the summary still
+   * renders, this one field alone drops to "—". */
+  sessions: number | null;
+  /** unitsSold / sessions -- null if sessions is null or 0. */
+  cvr: number | null;
 }
 
 export interface ShopifySummaryResponse {
@@ -275,6 +283,7 @@ export interface ShopifySummaryResponse {
 
 export interface ShopifyProductRow {
   productId: string;
+  productHandle: string | null;
   sku: string | null;
   title: string | null;
   productType: string | null;
@@ -282,6 +291,12 @@ export interface ShopifyProductRow {
   unitsSold: number;
   revenue: number;
   orders: number; // distinct orders containing this product
+  /** Landing-page sessions for this product's URL (Shopify Analytics, live).
+   * Null if productHandle is null (pre-migration row, not yet re-synced) or
+   * the product had zero attributed sessions. */
+  sessions: number | null;
+  /** unitsSold / sessions -- null if sessions is null or 0. */
+  cvr: number | null;
 }
 
 export interface ShopifyProductsResponse {
