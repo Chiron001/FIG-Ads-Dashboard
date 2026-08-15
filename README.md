@@ -32,7 +32,11 @@ Build proceeds phase by phase per the project spec, committing after each.
         against the real account (987-317-2491, client under manager
         150-991-6423, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` required). Smoke test:
         `npm run google:test --workspace server`.
-      - [ ] Meta Ads
+      - [x] Meta Ads (`server/src/connectors/meta.ts`) — verified live
+        against `act_295809043230605` (FigLiving, INR, Asia/Kolkata). Uses
+        a System User token (Employee role, `ads_read` only, no expiry,
+        least-privilege by design). Smoke test:
+        `npm run meta:test --workspace server`.
       - [ ] Amazon Ads
       - [ ] Myntra CSV ingest
 - [ ] Phase 5 — Normalization (timezone, FX if needed)
