@@ -7,6 +7,16 @@ displays it in a dark-themed dashboard. No login, no multi-tenancy — one
 account per platform, configured via `.env`. All figures in INR, all dates
 normalized to IST (Asia/Kolkata).
 
+## Live
+
+- **Dashboard:** https://fig-ads-dashboard.vercel.app
+- **API:** https://server-production-1271c.up.railway.app (`/health`,
+  `/sync/status`, etc.) — the dashboard talks to this automatically, no
+  need to hit it directly except for debugging.
+
+Both auto-deploy on push to `main` (Vercel for `/web`, Railway for
+`/server`) — no manual redeploy step needed after `git push`.
+
 ## Status
 
 Build proceeds phase by phase per the project spec, committing after each.
@@ -60,11 +70,15 @@ Build proceeds phase by phase per the project spec, committing after each.
       Yesterday/Last 7/Last 30 Days presets + custom range. Verified
       end-to-end with Playwright screenshots against live data — see
       `web/src/App.tsx` and `web/src/components/`.
-- [ ] Phase 8 — Scheduler + token refresh + backfill. Manual pieces exist
-      (`server/src/scripts/backfill.ts`, the "Sync now" button, `POST
-      /sync/:platform`) but there's no `node-cron` daily job yet, and no
-      deployment target for `/server` (Vercel can't run it — needs a
-      persistent process; **Railway** was chosen for this, not yet set up).
+- [ ] **Phase 8 — Scheduler + token refresh + backfill (partial).**
+      `/server` is now deployed to **Railway** (project
+      `fig-ads-dashboard-server`, service `server`, GitHub-connected —
+      auto-deploys on push to `main`, same as Vercel), publicly reachable at
+      `https://server-production-1271c.up.railway.app`. `/web` on Vercel
+      points at it via the `VITE_API_BASE_URL` build-time env var. Manual
+      sync pieces exist (`server/src/scripts/backfill.ts`, the "Sync now"
+      button, `POST /sync/:platform`) but there's still no `node-cron` daily
+      job — syncing only happens when triggered by hand.
 
 ## Structure
 
