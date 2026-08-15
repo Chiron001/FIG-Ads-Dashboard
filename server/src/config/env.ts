@@ -41,6 +41,10 @@ export const env = {
     developerToken: optional("GOOGLE_ADS_DEVELOPER_TOKEN"),
     refreshToken: optional("GOOGLE_ADS_REFRESH_TOKEN"),
     customerId: optional("GOOGLE_ADS_CUSTOMER_ID"),
+    // Only needed when customerId is a client account under a manager (MCC)
+    // account — Google Ads API requires the manager's id explicitly in that
+    // case, even if the authenticated user has access to the client account.
+    loginCustomerId: optional("GOOGLE_ADS_LOGIN_CUSTOMER_ID"),
   },
 
   meta: {

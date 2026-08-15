@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
-    "google:auth": "tsx src/scripts/google-get-refresh-token.ts"
+    "google:auth": "tsx src/scripts/google-get-refresh-token.ts",
+    "google:test": "tsx src/scripts/test-google-connector.ts"
   },
   "dependencies": {
     "@fig/shared": "*",
@@ -17,6 +18,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
+    "google-ads-api": "^24.1.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {
