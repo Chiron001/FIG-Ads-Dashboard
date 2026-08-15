@@ -18,8 +18,12 @@ Build proceeds phase by phase per the project spec, committing after each.
 - [x] **Phase 2 — Canonical schema + migrations.** `fact_ad_performance` +
       `sync_log` in `db/migrations/0001_init.sql`, applied by a small
       tracked runner (`npm run migrate --workspace server`). No
-      `dim_fx_rate` — confirmed all ad accounts bill in INR. **Not yet
-      applied to a live database** — needs `DATABASE_URL`.
+      `dim_fx_rate` — confirmed all ad accounts bill in INR. **Applied and
+      verified against the live Supabase project** (schema checked
+      column-by-column via `information_schema`; `/health/db` returns
+      `ok:true`). Note: Supabase's direct `db.<ref>.supabase.co` host is
+      IPv6-only — use the **session pooler** connection string instead (see
+      `.env.example`).
 - [x] **Phase 3 — Canonical TS types in `/shared`.** `CanonicalRow`,
       `SyncLogEntry`, `AdsConnector`, and `computeDerivedMetrics` (CTR/CPC/
       CPM/ROAS/ACOS/CVR, null-safe on zero denominators — spot-checked).
