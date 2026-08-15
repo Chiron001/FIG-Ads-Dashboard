@@ -27,7 +27,14 @@ Build proceeds phase by phase per the project spec, committing after each.
 - [x] **Phase 3 — Canonical TS types in `/shared`.** `CanonicalRow`,
       `SyncLogEntry`, `AdsConnector`, and `computeDerivedMetrics` (CTR/CPC/
       CPM/ROAS/ACOS/CVR, null-safe on zero denominators — spot-checked).
-- [ ] Phase 4 — Connectors: Google → Meta → Amazon → Myntra CSV
+- [ ] **Phase 4 — Connectors: Google → Meta → Amazon → Myntra CSV.**
+      - [x] Google Ads (`server/src/connectors/google.ts`) — verified live
+        against the real account (987-317-2491, client under manager
+        150-991-6423, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` required). Smoke test:
+        `npm run google:test --workspace server`.
+      - [ ] Meta Ads
+      - [ ] Amazon Ads
+      - [ ] Myntra CSV ingest
 - [ ] Phase 5 — Normalization (timezone, FX if needed)
 - [ ] Phase 6 — API endpoints
 - [ ] Phase 7 — Dashboard UI
@@ -72,7 +79,16 @@ curl http://localhost:4000/health/db    # ok:false until SUPABASE_* is set
 
 ## Manual prerequisites (not codeable — see spec §10)
 
-1. **Google Ads:** developer token approval + OAuth refresh token.
+1. **Google Ads:** developer token approval + OAuth refresh token. Done —
+   see `server/src/scripts/google-get-refresh-token.ts` (`npm run
+   google:auth --workspace server`) to regenerate if it's ever revoked.
+   Two gotchas hit during setup, worth knowing if this is redone: (a) the
+   OAuth app is unpublished/"Testing", so only accounts added as test users
+   in Cloud Console → Auth Platform → Audience can complete login — publish
+   to Production eventually, or refresh tokens expire every 7 days; (b) the
+   account is a client under a manager (MCC) account, so
+   `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (the manager's id) is required even for a
+   user with direct access to the client account.
 2. **Meta:** app with `ads_read`, pass App Review, generate long-lived token.
 3. **Amazon Ads:** register for the Advertising API, LWA setup, get profile ID.
 4. **Myntra:** locate the CSV export in the seller/partner panel; note the
