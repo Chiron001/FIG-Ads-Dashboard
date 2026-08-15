@@ -21,16 +21,21 @@ function median(values: number[]): number | null {
  * set (§2/§3: "compute medians over filtered set") -- call once per
  * render with the filtered array, reuse the result across verdictFor()
  * calls for that same array rather than recomputing per row. */
-export function computeMedians(rows: CampaignRow[]) {
+export function computeMedians(rows: Pick<CampaignRow, "ctr" | "cvr">[]) {
   return {
     medianCtr: median(rows.map((r) => r.ctr).filter((v): v is number => v != null)),
     medianCvr: median(rows.map((r) => r.cvr).filter((v): v is number => v != null)),
   };
 }
 
+/** The subset of CampaignRow's fields verdictFor actually needs -- lets the
+ * same rules apply at ad grain (AdRow), which has its own status/no search
+ * impression-share concept, not just at campaign grain. */
+export type VerdictInput = Pick<CampaignRow, "spend" | "conversions" | "status" | "roas" | "searchBudgetLostImpressionShare" | "ctr" | "cvr">;
+
 /** Rules evaluated top-down; first match wins -- see spec §3. */
 export function verdictFor(
-  row: CampaignRow,
+  row: VerdictInput,
   targetRoas: number,
   breakEvenRoas: number,
   medians: { medianCtr: number | null; medianCvr: number | null }

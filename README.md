@@ -121,6 +121,61 @@ Build proceeds phase by phase per the project spec, committing after each.
       - Verified live against real Google Ads data (curl on every new
         endpoint + Playwright screenshots of every new UI surface) before
         commit.
+- [x] **Google Ads: Product-Level & Ad-Level Spend.** Two new grains, each a
+      different breakdown of the SAME campaign spend `fact_ad_performance`
+      already holds -- never summed with campaign or with each other (the
+      "Critical modeling rule" the build spec leads with):
+      - `db/migrations/0005_google_product_ad_grain.sql` — two new tables,
+        `fact_shopping_product_performance` (from `shopping_performance_view`,
+        one row per SKU/campaign/day) and `fact_ad_creative_performance`
+        (from `ad_group_ad`, one row per ad/day). No changes to the existing
+        campaign-grain table.
+      - `GoogleAdsConnector` gains `fetchProductPerformance`/
+        `normalizeProductPerformance` and `fetchAdPerformance`/
+        `normalizeAdPerformance` (`server/src/connectors/google.ts`),
+        reusing the same authenticated session as the main sync — no
+        separate auth. `ad_group_ad.status`/`ad.type` needed the same
+        numeric-protobuf-enum resolution as `campaign.status` (verified live:
+        raw codes, not strings, exactly like the existing campaign-status
+        gotcha).
+      - `server/src/etl/googleGrains.ts` — upserts for both tables, wired
+        into `runSync("google", …)` so both grains refresh on the same
+        schedule as the campaign sync, each independently try/caught so one
+        grain's failure never blocks the other or the main sync.
+      - New endpoints: `GET /metrics/products` (SKU or category L1/L2
+        roll-up, defaults to L1 per spec §1f), `GET /metrics/products/pareto`
+        (SKU cumulative-revenue Pareto + zero-order "spend leak" tail
+        flags), `GET /metrics/ads` (per-ad, any campaign/ad-group filter).
+        Both product/ad endpoints return a `reconciliation` field (grain
+        spend vs. campaign spend for the same filter) — verified live: ads
+        reconcile to ~0.0001% (near-exact), products reconcile only
+        partially when a campaign mixes Shopping and Search spend, which the
+        UI surfaces honestly rather than hiding.
+      - `server/src/util/reconciliation.ts` + test — the spec's explicit
+        guardrail ("a unit test that would FAIL if product+ad+campaign
+        spend were ever added together"): simulates the exact double-count
+        bug (grain spend + campaign spend, as if summed across grains) and
+        asserts it's caught as ~100% out of tolerance, not silently passed.
+      - `web/src/lib/verdict.ts`'s `verdictFor`/`computeMedians` were
+        loosened from `CampaignRow` to a `Pick<...>` subset so the exact
+        same Scale/Maintain/Cut/etc rules apply at ad grain too (spec §2d),
+        no logic duplicated.
+      - UI: two new collapsible subsections under Google Ads (matching the
+        Portfolio section's pattern), **Products** and **Ad Groups & Ads**
+        (`web/src/components/GoogleProductsSection.tsx`,
+        `GoogleAdsSection.tsx`) — each with its own campaign filter,
+        independent of the campaign table above. Products defaults to the
+        category roll-up (toggle to sub-category or individual SKU), carries
+        the mandatory clicked-vs-purchased attribution caveat banner, a
+        reconciliation note, and a Pareto headline + collapsible spend-leak
+        list. Ads shows per-ad Verdict pills, sorted by spend desc,
+        zero-spend hidden by default. Never a combined table mixing grains.
+      - Verified live end-to-end: manual `/sync/google` populated both new
+        tables from the real account (1,000 product rows / 55 SKUs, 184 ad
+        rows / 4 ads), all three endpoints curl-verified, and every new UI
+        surface confirmed via Playwright screenshots (category roll-up, SKU
+        drill-down, Pareto + spend-leak list, ad table with verdicts and a
+        nearly-exact reconciliation) with zero console errors.
 
 ## Structure
 

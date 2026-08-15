@@ -11,6 +11,8 @@ import { KpiTile } from "./KpiTile";
 import { TimeSeriesChart, type ChartPoint, type SmoothingMode } from "./TimeSeriesChart";
 import { CampaignTable } from "./CampaignTable";
 import { PortfolioView } from "./PortfolioView";
+import { GoogleProductsSection } from "./GoogleProductsSection";
+import { GoogleAdsSection } from "./GoogleAdsSection";
 
 interface Props {
   platform: Platform;
@@ -84,6 +86,8 @@ export function PlatformSection({
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showProducts, setShowProducts] = useState(false);
+  const [showAds, setShowAds] = useState(false);
 
   useEffect(() => {
     if (!connected) return;
@@ -306,6 +310,48 @@ export function PlatformSection({
           </div>
         )}
       </div>
+
+      {/* Two new grains, Google-only for now (Shopping/PMax product feed +
+          ad_group_ad both need Google's connector methods) -- each is a
+          different breakdown of the SAME campaign spend above, never
+          summed with it or with each other. See db/migrations/0005. */}
+      {platform === "google" && (
+        <>
+          <div className="rounded-lg border border-border bg-surface-1">
+            <button type="button" onClick={() => setShowProducts((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
+              <div>
+                <h3 className="text-sm font-semibold text-ink-primary">Products</h3>
+                <p className="text-xs text-ink-muted">Shopping/PMax spend broken down by product (category roll-up or individual SKU).</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showProducts ? "rotate-180" : ""}`}>
+                <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {showProducts && (
+              <div className="border-t border-border">
+                <GoogleProductsSection range={range} grossMargin={grossMargin} campaigns={campaigns} refreshKey={refreshKey} />
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border bg-surface-1">
+            <button type="button" onClick={() => setShowAds((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
+              <div>
+                <h3 className="text-sm font-semibold text-ink-primary">Ad Groups &amp; Ads</h3>
+                <p className="text-xs text-ink-muted">Spend broken down per ad group and individual ad/creative.</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showAds ? "rotate-180" : ""}`}>
+                <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {showAds && (
+              <div className="border-t border-border">
+                <GoogleAdsSection range={range} grossMargin={grossMargin} targetRoas={targetRoas} campaigns={campaigns} refreshKey={refreshKey} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

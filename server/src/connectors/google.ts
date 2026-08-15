@@ -13,6 +13,16 @@ function campaignStatusName(code: number): string {
   return (enums.CampaignStatus as unknown as Record<number, string>)[code] ?? String(code);
 }
 
+// Same numeric-protobuf-enum quirk as campaign.status (see comment above)
+// applies to ad_group_ad.status and ad_group_ad.ad.type -- resolve both to
+// their string names the same way.
+function adGroupAdStatusName(code: number): string {
+  return (enums.AdGroupAdStatus as unknown as Record<number, string>)[code] ?? String(code);
+}
+function adTypeName(code: number): string {
+  return (enums.AdType as unknown as Record<number, string>)[code] ?? String(code);
+}
+
 // Google Ads reports (segments.date) are bucketed by the *account's own*
 // configured timezone, not UTC. If that account timezone isn't IST, a daily
 // bucket doesn't line up exactly with an IST calendar day — there's no way
@@ -80,6 +90,95 @@ const CAMPAIGN_ROSTER_QUERY = `
   FROM campaign
   WHERE campaign.status != 'REMOVED'
 `;
+
+// --- product-level (Shopping/PMax) grain -----------------------------------
+//
+// shopping_performance_view. Separate query, separate table
+// (fact_shopping_product_performance) -- see db/migrations/0005 and the
+// "Critical modeling rule" in the build spec: this is a different breakdown
+// of the SAME campaign spend, never summed with the campaign or ad grain.
+const PRODUCT_PERFORMANCE_QUERY = (from: string, to: string) => `
+  SELECT
+    segments.product_item_id,
+    segments.product_title,
+    segments.product_brand,
+    segments.product_type_l1,
+    segments.product_type_l2,
+    segments.product_type_l3,
+    segments.product_channel,
+    campaign.id,
+    campaign.name,
+    segments.date,
+    metrics.cost_micros,
+    metrics.impressions,
+    metrics.clicks,
+    metrics.conversions,
+    metrics.conversions_value
+  FROM shopping_performance_view
+  WHERE segments.date BETWEEN '${from}' AND '${to}'
+`;
+
+export interface GoogleProductPerformanceInput {
+  campaignId: string;
+  campaignName: string | null;
+  productItemId: string;
+  productTitle: string | null;
+  productBrand: string | null;
+  productTypeL1: string | null;
+  productTypeL2: string | null;
+  productTypeL3: string | null;
+  productChannel: string | null;
+  date: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  raw: Record<string, unknown>;
+}
+
+// --- ad-level grain ----------------------------------------------------------
+//
+// ad_group_ad. Search/Display/Video ad types report here; Shopping/PMax
+// campaigns have no rows (they have no traditional "ads" -- their spend
+// breakdown lives in the product grain above instead).
+const AD_PERFORMANCE_QUERY = (from: string, to: string) => `
+  SELECT
+    ad_group_ad.ad.id,
+    ad_group_ad.ad.name,
+    ad_group_ad.ad.type,
+    ad_group_ad.status,
+    ad_group.id,
+    ad_group.name,
+    campaign.id,
+    campaign.name,
+    segments.date,
+    metrics.cost_micros,
+    metrics.impressions,
+    metrics.clicks,
+    metrics.conversions,
+    metrics.conversions_value
+  FROM ad_group_ad
+  WHERE segments.date BETWEEN '${from}' AND '${to}'
+`;
+
+export interface GoogleAdPerformanceInput {
+  campaignId: string;
+  campaignName: string | null;
+  adGroupId: string;
+  adGroupName: string | null;
+  adId: string;
+  adName: string | null;
+  adType: string | null;
+  adStatus: string | null;
+  date: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  raw: Record<string, unknown>;
+}
 
 export class GoogleAdsConnector implements AdsConnector {
   platform = "google" as const;
@@ -227,6 +326,112 @@ export class GoogleAdsConnector implements AdsConnector {
         attributionWindow: ATTRIBUTION_WINDOW,
         searchImpressionShare: null,
         searchBudgetLostImpressionShare: null,
+        raw: row as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  // --- product-level (Shopping/PMax) grain ----------------------------------
+
+  async fetchProductPerformance(from: string, to: string): Promise<RawRow[]> {
+    if (!this.customer) {
+      throw new Error("Google Ads connector: call authenticate() before fetchProductPerformance().");
+    }
+    const rows = await this.customer.query(PRODUCT_PERFORMANCE_QUERY(from, to));
+    return rows as unknown as RawRow[];
+  }
+
+  normalizeProductPerformance(rows: RawRow[]): GoogleProductPerformanceInput[] {
+    return rows.map((r) => {
+      const row = r as unknown as {
+        segments: {
+          product_item_id?: string;
+          product_title?: string;
+          product_brand?: string;
+          product_type_l1?: string;
+          product_type_l2?: string;
+          product_type_l3?: string;
+          product_channel?: string;
+          date: string;
+        };
+        campaign: { id: number; name: string };
+        metrics: {
+          cost_micros?: number | string;
+          impressions?: number | string;
+          clicks?: number | string;
+          conversions?: number | string;
+          conversions_value?: number | string;
+        };
+      };
+      return {
+        campaignId: String(row.campaign.id),
+        campaignName: row.campaign.name ?? null,
+        // segments.product_item_id can legitimately be absent for a handful
+        // of malformed feed rows -- fall back to a stable placeholder
+        // rather than dropping the row (spend/impressions are still real).
+        productItemId: row.segments.product_item_id ?? "unknown",
+        productTitle: row.segments.product_title ?? null,
+        productBrand: row.segments.product_brand ?? null,
+        productTypeL1: row.segments.product_type_l1 ?? null,
+        productTypeL2: row.segments.product_type_l2 ?? null,
+        productTypeL3: row.segments.product_type_l3 ?? null,
+        productChannel: row.segments.product_channel ?? null,
+        date: row.segments.date,
+        spend: Number(row.metrics.cost_micros ?? 0) / 1e6,
+        impressions: Number(row.metrics.impressions ?? 0),
+        clicks: Number(row.metrics.clicks ?? 0),
+        conversions: Number(row.metrics.conversions ?? 0),
+        revenue: Number(row.metrics.conversions_value ?? 0),
+        raw: row as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  // --- ad-level grain --------------------------------------------------------
+
+  async fetchAdPerformance(from: string, to: string): Promise<RawRow[]> {
+    if (!this.customer) {
+      throw new Error("Google Ads connector: call authenticate() before fetchAdPerformance().");
+    }
+    const rows = await this.customer.query(AD_PERFORMANCE_QUERY(from, to));
+    return rows as unknown as RawRow[];
+  }
+
+  normalizeAdPerformance(rows: RawRow[]): GoogleAdPerformanceInput[] {
+    return rows.map((r) => {
+      const row = r as unknown as {
+        ad_group_ad: {
+          ad: { id: number; name?: string; type?: number };
+          status?: number;
+        };
+        ad_group: { id: number; name: string };
+        campaign: { id: number; name: string };
+        segments: { date: string };
+        metrics: {
+          cost_micros?: number | string;
+          impressions?: number | string;
+          clicks?: number | string;
+          conversions?: number | string;
+          conversions_value?: number | string;
+        };
+      };
+      return {
+        campaignId: String(row.campaign.id),
+        campaignName: row.campaign.name ?? null,
+        adGroupId: String(row.ad_group.id),
+        adGroupName: row.ad_group.name ?? null,
+        adId: String(row.ad_group_ad.ad.id),
+        // ad.name is empty for several ad types (e.g. auto-generated RSAs) --
+        // null here, UI falls back to id+type per spec §2b.
+        adName: row.ad_group_ad.ad.name ?? null,
+        adType: row.ad_group_ad.ad.type != null ? adTypeName(row.ad_group_ad.ad.type) : null,
+        adStatus: row.ad_group_ad.status != null ? adGroupAdStatusName(row.ad_group_ad.status) : null,
+        date: row.segments.date,
+        spend: Number(row.metrics.cost_micros ?? 0) / 1e6,
+        impressions: Number(row.metrics.impressions ?? 0),
+        clicks: Number(row.metrics.clicks ?? 0),
+        conversions: Number(row.metrics.conversions ?? 0),
+        revenue: Number(row.metrics.conversions_value ?? 0),
         raw: row as unknown as Record<string, unknown>,
       };
     });

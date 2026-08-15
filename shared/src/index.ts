@@ -367,3 +367,99 @@ export interface PortfolioResponse {
   pareto: ParetoPointDTO[];
   contribution: ContributionRowDTO[];
 }
+
+// --- Google Ads: product-level (Shopping/PMax) and ad-level grain ----------
+//
+// Two different breakdowns of the SAME campaign spend -- never summed with
+// each other or with fact_ad_performance (campaign grain). Each reconciles
+// independently back to campaign totals; see ReconciliationInfo. Build spec:
+// "FIG Living — Google Ads: Product-Level & Ad-Level Spend."
+
+/** How closely a grain's summed spend matches the campaign total it's a
+ * breakdown of. `deviationPct` is null (never 0/NaN) when campaignSpend is
+ * 0 -- nothing to reconcile against. */
+export interface ReconciliationInfo {
+  grainSpend: number;
+  campaignSpend: number;
+  deviationPct: number | null;
+  withinTolerance: boolean;
+  tolerancePct: number;
+}
+
+export type ProductGroupBy = "sku" | "type_l1" | "type_l2";
+
+export interface ProductPerformanceRow extends DerivedMetrics {
+  /** Group key -- product_item_id for "sku", product_type_l1 (or "—") for
+   * "type_l1", "type_l1|type_l2" for "type_l2". */
+  key: string;
+  productItemId: string | null; // present only at groupBy="sku"
+  productTitle: string | null; // present only at groupBy="sku"
+  productTypeL1: string | null;
+  productTypeL2: string | null;
+  /** Distinct SKUs folded into this row -- 1 at groupBy="sku", >1 at a roll-up level. */
+  skuCount: number;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+export interface MetricsProductsResponse {
+  from: string;
+  to: string;
+  platform: "google";
+  groupBy: ProductGroupBy;
+  campaignId: string | null; // null = all campaigns
+  products: ProductPerformanceRow[];
+  reconciliation: ReconciliationInfo;
+}
+
+export interface ProductParetoPointDTO {
+  productItemId: string;
+  productTitle: string | null;
+  revenue: number;
+  cumulativePct: number;
+}
+
+/** Spend with zero orders over the range -- a feed/targeting leak candidate. */
+export interface TailLeakRow {
+  productItemId: string;
+  productTitle: string | null;
+  spend: number;
+}
+
+export interface MetricsProductsParetoResponse {
+  from: string;
+  to: string;
+  skusToEightyPercent: number;
+  totalSkus: number;
+  pareto: ProductParetoPointDTO[];
+  tailLeaks: TailLeakRow[];
+}
+
+export interface AdRow extends DerivedMetrics {
+  adId: string;
+  adName: string | null;
+  adType: string | null;
+  adStatus: string | null;
+  adGroupId: string;
+  adGroupName: string | null;
+  campaignId: string;
+  campaignName: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+export interface MetricsAdsResponse {
+  from: string;
+  to: string;
+  platform: "google";
+  campaignId: string | null;
+  adGroupId: string | null;
+  ads: AdRow[];
+  reconciliation: ReconciliationInfo;
+}

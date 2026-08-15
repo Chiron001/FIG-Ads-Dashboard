@@ -13,6 +13,10 @@ import type {
   AnomaliesResponse,
   DiagnosticsResponse,
   PortfolioResponse,
+  ProductGroupBy,
+  MetricsProductsResponse,
+  MetricsProductsParetoResponse,
+  MetricsAdsResponse,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -116,4 +120,26 @@ export function fetchDiagnostics(
 
 export function fetchPortfolio(platform: Platform, from: string, to: string, grossMargin: number): Promise<PortfolioResponse> {
   return getJSON(`/stats/portfolio?platform=${platform}&from=${from}&to=${to}&grossMargin=${grossMargin}`);
+}
+
+// --- Google Ads: product-level (Shopping/PMax) and ad-level grain ----------
+
+export function fetchProducts(
+  from: string,
+  to: string,
+  groupBy: ProductGroupBy,
+  campaignId?: string | null
+): Promise<MetricsProductsResponse> {
+  const campaignParam = campaignId ? `&campaign_id=${encodeURIComponent(campaignId)}` : "";
+  return getJSON(`/metrics/products?from=${from}&to=${to}&group_by=${groupBy}${campaignParam}`);
+}
+
+export function fetchProductsPareto(from: string, to: string, campaignId?: string | null): Promise<MetricsProductsParetoResponse> {
+  const campaignParam = campaignId ? `&campaign_id=${encodeURIComponent(campaignId)}` : "";
+  return getJSON(`/metrics/products/pareto?from=${from}&to=${to}${campaignParam}`);
+}
+
+export function fetchAds(from: string, to: string, campaignId?: string | null): Promise<MetricsAdsResponse> {
+  const campaignParam = campaignId ? `&campaign_id=${encodeURIComponent(campaignId)}` : "";
+  return getJSON(`/metrics/ads?from=${from}&to=${to}${campaignParam}`);
 }

@@ -2,7 +2,8 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { ALL_PLATFORMS, computeDerivedMetrics } from "@fig/shared";
-import { coefficientOfVariation, reliabilityLabel, isRightSkewed, wilsonInterval, marginalRoas as computeMarginalRoas } from "../stats";
+import { coefficientOfVariation, reliabilityLabel, isRightSkewed, wilsonInterval, marginalRoas as computeMarginalRoas, paretoAnalysis } from "../stats";
+import { computeReconciliation } from "../util/reconciliation";
 import type {
   Platform,
   DerivedMetrics,
@@ -13,7 +14,21 @@ import type {
   MetricsTimeseriesResponse,
   CampaignRow,
   MetricsCampaignsResponse,
+  ProductGroupBy,
+  ProductPerformanceRow,
+  MetricsProductsResponse,
+  ProductParetoPointDTO,
+  TailLeakRow,
+  MetricsProductsParetoResponse,
+  AdRow,
+  MetricsAdsResponse,
 } from "@fig/shared";
+
+// Products/Ads reconciliation tolerances (spec §0/§6): product-grain spend
+// is genuinely ~5% short of campaign spend (item-level attribution gaps);
+// ad-grain spend should match almost exactly.
+const PRODUCT_RECONCILIATION_TOLERANCE = 0.05;
+const AD_RECONCILIATION_TOLERANCE = 0.01;
 
 export const metricsRouter = Router();
 
@@ -269,5 +284,215 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   });
 
   const response: MetricsCampaignsResponse = { from: range.from, to: range.to, platform: platform as Platform, campaigns };
+  res.json(response);
+}));
+
+// --- Google Ads: product-level (Shopping/PMax) and ad-level grain ----------
+//
+// Two separate breakdowns of the SAME campaign spend fact_ad_performance
+// already holds -- never summed with campaign or ad-grain totals. See
+// db/migrations/0005_google_product_ad_grain.sql and the build spec's
+// "Critical modeling rule" (§0).
+
+/** Campaign-grain spend for the same filter, to reconcile a breakdown
+ * grain against. Google-only (both new tables are Google-only for now). */
+async function campaignSpendForReconciliation(from: string, to: string, campaignId: string | null): Promise<number> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select coalesce(sum(spend), 0)::float8 as spend
+     from fact_ad_performance
+     where date between $1 and $2 and platform::text = 'google'
+       ${campaignId ? "and campaign_id = $3" : ""}`,
+    campaignId ? [from, to, campaignId] : [from, to]
+  );
+  return rows[0]?.spend ?? 0;
+}
+
+// GET /metrics/products?from&to&campaign_id?&group_by=sku|type_l1|type_l2
+metricsRouter.get("/products", asyncHandler(async (req, res) => {
+  const range = parseDateRange(req.query as Record<string, unknown>);
+  if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+
+  const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
+  const groupByRaw = typeof req.query.group_by === "string" ? req.query.group_by : "type_l1";
+  if (!["sku", "type_l1", "type_l2"].includes(groupByRaw)) {
+    return res.status(400).json({ error: "group_by must be one of: sku, type_l1, type_l2" });
+  }
+  const groupBy = groupByRaw as ProductGroupBy;
+
+  const pool = getPool();
+  const params: unknown[] = [range.from, range.to];
+  const campaignFilter = campaignId ? (params.push(campaignId), `and campaign_id = $${params.length}`) : "";
+
+  // Nulls in product_type_l1/l2 must not break grouping -- coalesce to a
+  // literal "—" group key so ungrouped/uncategorized spend still rolls up
+  // into one visible row instead of silently vanishing or fragmenting.
+  const groupExpr =
+    groupBy === "sku"
+      ? "product_item_id"
+      : groupBy === "type_l1"
+        ? "coalesce(product_type_l1, '—')"
+        : "coalesce(product_type_l1, '—') || '|' || coalesce(product_type_l2, '—')";
+
+  const { rows } = await pool.query(
+    `select
+       ${groupExpr} as key,
+       ${groupBy === "sku" ? "max(product_item_id) as product_item_id, max(product_title) as product_title," : "null as product_item_id, null as product_title,"}
+       max(product_type_l1) as product_type_l1,
+       ${groupBy === "type_l2" ? "max(product_type_l2)" : "null"} as product_type_l2,
+       count(distinct product_item_id)::int as sku_count,
+       coalesce(sum(spend), 0)::float8 as spend,
+       coalesce(sum(impressions), 0)::float8 as impressions,
+       coalesce(sum(clicks), 0)::float8 as clicks,
+       coalesce(sum(conversions), 0)::float8 as conversions,
+       coalesce(sum(revenue), 0)::float8 as revenue
+     from fact_shopping_product_performance
+     where date between $1 and $2 and platform::text = 'google' ${campaignFilter}
+     group by ${groupExpr}
+     order by spend desc`,
+    params
+  );
+
+  const products: ProductPerformanceRow[] = rows.map((r) => ({
+    key: r.key,
+    productItemId: r.product_item_id,
+    productTitle: r.product_title,
+    productTypeL1: r.product_type_l1,
+    productTypeL2: r.product_type_l2,
+    skuCount: r.sku_count,
+    spend: r.spend,
+    impressions: r.impressions,
+    clicks: r.clicks,
+    conversions: r.conversions,
+    revenue: r.revenue,
+    ...computeDerivedMetrics(r),
+  }));
+
+  const grainSpend = products.reduce((s, p) => s + p.spend, 0);
+  const campaignSpend = await campaignSpendForReconciliation(range.from, range.to, campaignId);
+
+  const response: MetricsProductsResponse = {
+    from: range.from,
+    to: range.to,
+    platform: "google",
+    groupBy,
+    campaignId,
+    products,
+    reconciliation: computeReconciliation(grainSpend, campaignSpend, PRODUCT_RECONCILIATION_TOLERANCE),
+  };
+  res.json(response);
+}));
+
+// GET /metrics/products/pareto?from&to&campaign_id?
+// SKU-level cumulative-revenue Pareto + tail-leak flags (spend>0, orders=0).
+metricsRouter.get("/products/pareto", asyncHandler(async (req, res) => {
+  const range = parseDateRange(req.query as Record<string, unknown>);
+  if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+  const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
+
+  const pool = getPool();
+  const params: unknown[] = [range.from, range.to];
+  const campaignFilter = campaignId ? (params.push(campaignId), `and campaign_id = $${params.length}`) : "";
+
+  const { rows } = await pool.query(
+    `select product_item_id, max(product_title) as product_title,
+            coalesce(sum(spend), 0)::float8 as spend,
+            coalesce(sum(conversions), 0)::float8 as conversions,
+            coalesce(sum(revenue), 0)::float8 as revenue
+     from fact_shopping_product_performance
+     where date between $1 and $2 and platform::text = 'google' ${campaignFilter}
+     group by product_item_id`,
+    params
+  );
+
+  const pareto = paretoAnalysis(rows.map((r) => ({ campaignId: r.product_item_id, campaignName: r.product_title, revenue: r.revenue })));
+  const paretoDTO: ProductParetoPointDTO[] = pareto.points.map((p) => ({
+    productItemId: p.campaignId,
+    productTitle: p.campaignName,
+    revenue: p.revenue,
+    cumulativePct: p.cumulativePct,
+  }));
+
+  const tailLeaks: TailLeakRow[] = rows
+    .filter((r) => r.spend > 0 && r.conversions === 0)
+    .sort((a, b) => b.spend - a.spend)
+    .map((r) => ({ productItemId: r.product_item_id, productTitle: r.product_title, spend: r.spend }));
+
+  const response: MetricsProductsParetoResponse = {
+    from: range.from,
+    to: range.to,
+    skusToEightyPercent: pareto.campaignsToEightyPercent,
+    totalSkus: pareto.totalCampaigns,
+    pareto: paretoDTO,
+    tailLeaks,
+  };
+  res.json(response);
+}));
+
+// GET /metrics/ads?from&to&campaign_id?&ad_group_id?
+metricsRouter.get("/ads", asyncHandler(async (req, res) => {
+  const range = parseDateRange(req.query as Record<string, unknown>);
+  if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+  const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
+  const adGroupId = typeof req.query.ad_group_id === "string" ? req.query.ad_group_id : null;
+
+  const pool = getPool();
+  const params: unknown[] = [range.from, range.to];
+  let filters = "";
+  if (campaignId) {
+    params.push(campaignId);
+    filters += ` and campaign_id = $${params.length}`;
+  }
+  if (adGroupId) {
+    params.push(adGroupId);
+    filters += ` and ad_group_id = $${params.length}`;
+  }
+
+  const { rows } = await pool.query(
+    `select
+       ad_id, max(ad_name) as ad_name, max(ad_type) as ad_type, max(ad_status) as ad_status,
+       ad_group_id, max(ad_group_name) as ad_group_name,
+       max(campaign_id) as campaign_id, max(campaign_name) as campaign_name,
+       coalesce(sum(spend), 0)::float8 as spend,
+       coalesce(sum(impressions), 0)::float8 as impressions,
+       coalesce(sum(clicks), 0)::float8 as clicks,
+       coalesce(sum(conversions), 0)::float8 as conversions,
+       coalesce(sum(revenue), 0)::float8 as revenue
+     from fact_ad_creative_performance
+     where date between $1 and $2 and platform::text = 'google' ${filters}
+     group by ad_id, ad_group_id
+     order by spend desc`,
+    params
+  );
+
+  const ads: AdRow[] = rows.map((r) => ({
+    adId: r.ad_id,
+    adName: r.ad_name,
+    adType: r.ad_type,
+    adStatus: r.ad_status,
+    adGroupId: r.ad_group_id,
+    adGroupName: r.ad_group_name,
+    campaignId: r.campaign_id,
+    campaignName: r.campaign_name,
+    spend: r.spend,
+    impressions: r.impressions,
+    clicks: r.clicks,
+    conversions: r.conversions,
+    revenue: r.revenue,
+    ...computeDerivedMetrics(r),
+  }));
+
+  const grainSpend = ads.reduce((s, a) => s + a.spend, 0);
+  const campaignSpend = await campaignSpendForReconciliation(range.from, range.to, campaignId);
+
+  const response: MetricsAdsResponse = {
+    from: range.from,
+    to: range.to,
+    platform: "google",
+    campaignId,
+    adGroupId,
+    ads,
+    reconciliation: computeReconciliation(grainSpend, campaignSpend, AD_RECONCILIATION_TOLERANCE),
+  };
   res.json(response);
 }));
