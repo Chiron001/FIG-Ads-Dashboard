@@ -5,6 +5,7 @@ import { getSupabase } from "./db/supabase";
 import { metricsRouter } from "./routes/metrics";
 import { syncRouter } from "./routes/sync";
 import { shopifyRouter } from "./routes/shopify";
+import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { statsRouter } from "./routes/stats";
 import type { AppConfig, HealthStatus } from "@fig/shared";
 
@@ -14,6 +15,13 @@ app.use(express.json());
 
 app.use("/metrics", metricsRouter);
 app.use("/sync", syncRouter);
+// One-time OAuth handshake to obtain SHOPIFY_ADMIN_ACCESS_TOKEN -- see
+// routes/shopifyOauth.ts. Separate from shopifyRouter (which serves the
+// actual data endpoints) so the distinction is obvious from the router
+// list alone: this one is a setup tool, not part of the data API surface.
+// Mounted before the broader /shopify prefix so its more specific path
+// always wins the match, regardless of route order inside shopifyRouter.
+app.use("/shopify/oauth", shopifyOauthRouter);
 app.use("/shopify", shopifyRouter);
 app.use("/stats", statsRouter);
 

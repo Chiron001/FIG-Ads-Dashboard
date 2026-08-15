@@ -214,6 +214,39 @@ Build proceeds phase by phase per the project spec, committing after each.
         has no catalog/pixel match, surfaced honestly in the same banner as
         Google's), and both sections confirmed via Playwright against the
         live Meta Ads tab with zero console errors.
+      - Added the same **"Hide zero-spend"** filter (default on) to the
+        Products section that the campaign table and Ads section already
+        had — % Spend/% Rev recompute over the visible (filtered) set,
+        matching the existing pattern.
+- [x] **Shopify — connected.** `SHOPIFY_STORE_DOMAIN=figliving1.myshopify.com`
+      + `SHOPIFY_ADMIN_ACCESS_TOKEN` (a store-level "legacy custom app"
+      Admin API token, scopes `read_orders`/`read_all_orders`/
+      `read_products`) are live in `.env` and on Railway. **Getting the
+      token was non-trivial** — Shopify retired creating new legacy custom
+      apps as of 2026-01-01, so the obvious path (a static token, no OAuth)
+      looked closed at first. Two things unblocked it:
+      1. `figliving1.myshopify.com` turned out to already have an existing
+         legacy custom app from before that cutoff (unaffected by the
+         retirement — "does not impact any existing apps"), so no OAuth was
+         actually needed in the end.
+      2. As a fallback for the case where that hadn't been true,
+         `server/src/routes/shopifyOauth.ts` (+ `SHOPIFY_CLIENT_ID`/
+         `SHOPIFY_CLIENT_SECRET` in `env.ts`) implements a one-time OAuth
+         handshake (`GET /shopify/oauth/install` → Shopify's authorize
+         screen → `GET /shopify/oauth/callback`, with HMAC verification and
+         one-time state/nonce checking) against a Dev-Dashboard app, ending
+         in a page that displays the resulting Admin API access token once
+         for manual copy into `SHOPIFY_ADMIN_ACCESS_TOKEN` — nothing is
+         stored server-side. Kept in the codebase (unused for now, but zero
+         cost to keep) in case the token ever needs regenerating via that
+         route instead.
+      - Verified live: connector smoke test against the real store (1,067
+        orders / ₹44.8L revenue / 1,508 line items over a 30-day sample),
+        then a 90-day production backfill via `POST /shopify/sync`
+        (2,846 orders, ₹1.17Cr revenue), confirmed end-to-end on the
+        deployed frontend (`/shopify/status` → `connected: true`, KPI
+        tiles and a 144-row product table populated with real SKUs/types/
+        vendors) with zero console errors.
 
 ## Structure
 

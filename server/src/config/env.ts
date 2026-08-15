@@ -64,6 +64,14 @@ export const env = {
     // e.g. "fig-living.myshopify.com" -- no https://, no trailing slash.
     storeDomain: optional("SHOPIFY_STORE_DOMAIN"),
     adminAccessToken: optional("SHOPIFY_ADMIN_ACCESS_TOKEN"),
+    // Only needed for the one-time OAuth handshake (/shopify/oauth/install +
+    // /shopify/oauth/callback) that produces adminAccessToken above --
+    // Shopify retired creating new "legacy custom apps" (a direct static
+    // token, no OAuth) as of 2026-01-01, so a Dev-Dashboard app + this
+    // one-time flow is now the only way to get that token. Not used by the
+    // actual data-fetching connector at all, only by the OAuth routes.
+    clientId: optional("SHOPIFY_CLIENT_ID"),
+    clientSecret: optional("SHOPIFY_CLIENT_SECRET"),
   },
 
   // Campaign-table economics (Break-even ROAS, Profit, Verdict). The UI
