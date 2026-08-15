@@ -11,7 +11,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "google:auth": "tsx src/scripts/google-get-refresh-token.ts",
     "google:test": "tsx src/scripts/test-google-connector.ts",
-    "meta:test": "tsx src/scripts/test-meta-connector.ts"
+    "meta:test": "tsx src/scripts/test-meta-connector.ts",
+    "amazon:auth": "tsx src/scripts/amazon-get-refresh-token.ts"
   },
   "dependencies": {
     "@fig/shared": "*",
