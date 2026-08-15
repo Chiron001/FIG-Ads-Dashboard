@@ -1,10 +1,12 @@
-import type { ReactElement } from "react";
 import type { Platform } from "@fig/shared";
 
-// Simple, brand-color-accurate glyphs for quick visual scanning in the
-// sidebar (especially collapsed mode) -- not a reproduction of any
-// platform's official logo asset, just enough to be recognizable at a
-// glance without redistributing trademarked artwork.
+// Google: no source image provided, so a hand-built glyph (this is the
+// well-known, widely-reproduced standard "G" mark). Meta/Amazon/Myntra: the
+// user's provided images, processed offline (trimmed, centered, composited
+// onto a white rounded-square badge -- see web/public/icons/) since Amazon's
+// mark is black-on-transparent and would vanish against the dark sidebar
+// otherwise. Google's glyph gets a matching badge wrapper so all four read
+// as one consistent set rather than three "chips" and one bare icon.
 
 function GoogleGlyph({ size }: { size: number }) {
   return (
@@ -17,52 +19,32 @@ function GoogleGlyph({ size }: { size: number }) {
   );
 }
 
-function MetaGlyph({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32">
-      <path fill="#0081FB" d="M8.7 4.2C4.3 4.2 1 9.3 1 15.2c0 4.9 2.1 8.9 5.4 8.9 2.5 0 3.9-1.7 6.4-6 .8-1.3 1.6-2.8 2.3-4.1-1-1.6-2-3.1-2.9-4.3-1.7-2.3-2.9-5.5-3.5-5.5z" />
-      <path fill="#0081FB" d="M23.3 4.2c-.6 0-1.8 3.2-3.5 5.5-.9 1.2-1.9 2.7-2.9 4.3.7 1.3 1.5 2.8 2.3 4.1 2.5 4.3 3.9 6 6.4 6 3.3 0 5.4-4 5.4-8.9 0-5.9-3.3-11-7.7-11z" />
-    </svg>
-  );
-}
-
-function AmazonGlyph({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24">
-      <path
-        fill="#FF9900"
-        d="M12.5 16.8c-3.3 0-6.4-.9-8.9-2.5-.3-.2-.5.2-.3.4 2.3 2.1 5.6 3.5 9.2 3.5 2.5 0 5.5-.8 7.5-2.3.3-.2 0-.6-.3-.5-2.2.9-4.6 1.4-7.2 1.4z"
-      />
-      <path
-        fill="#FF9900"
-        d="M19.9 15.4c-.2-.3-1.5-.4-2.2-.1-.2.1-.2-.1-.1-.2 1-.7 2.7-.5 2.9-.3.2.3-.1 2-1 2.8-.1.1-.3.1-.2-.1.2-.5.7-1.6.6-2.1z"
-      />
-      <path
-        fill="#FF9900"
-        d="M12 3c-3.3 0-6 2.7-6 6h1.8c0-2.3 1.9-4.2 4.2-4.2s4.2 1.9 4.2 4.2v.6l-2.5.3c-2.6.3-4.5 1.6-4.5 3.8 0 2 1.5 3.3 3.5 3.3 1.4 0 2.5-.6 3.5-1.5.2.5.5.9.9 1.3l1.5-1.4c-.3-.4-.5-.8-.5-1.7V9c0-3.3-2.4-6-5.1-6z"
-      />
-    </svg>
-  );
-}
-
-function MyntraGlyph({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24">
-      <text x="12" y="17.5" textAnchor="middle" fontSize="16" fontWeight="800" fill="#FF3F6C" fontFamily="system-ui, sans-serif">
-        M
-      </text>
-    </svg>
-  );
-}
-
-const GLYPHS: Record<Platform, (props: { size: number }) => ReactElement> = {
-  google: GoogleGlyph,
-  meta: MetaGlyph,
-  amazon: AmazonGlyph,
-  myntra: MyntraGlyph,
+const IMAGE_ICONS: Partial<Record<Platform, string>> = {
+  meta: "/icons/meta.png",
+  amazon: "/icons/amazon.png",
+  myntra: "/icons/myntra.png",
 };
 
 export function PlatformIcon({ platform, size = 18 }: { platform: Platform; size?: number }) {
-  const Glyph = GLYPHS[platform];
-  return <Glyph size={size} />;
+  const badgeStyle = { width: size, height: size };
+  const imageSrc = IMAGE_ICONS[platform];
+
+  if (imageSrc) {
+    return (
+      <img
+        src={imageSrc}
+        alt=""
+        width={size}
+        height={size}
+        style={badgeStyle}
+        className="rounded-[22%] object-cover"
+      />
+    );
+  }
+
+  return (
+    <span className="flex items-center justify-center rounded-[22%] bg-white" style={badgeStyle}>
+      <GoogleGlyph size={size * 0.72} />
+    </span>
+  );
 }
