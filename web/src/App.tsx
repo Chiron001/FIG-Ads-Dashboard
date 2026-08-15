@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Platform, SyncStatusResponse } from "@fig/shared";
+import type { Platform, SyncStatusResponse, ShopifyStatus } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
 import { COMPARISON_LABELS, COMPARISON_MODE_ORDER, type ComparisonMode } from "./lib/comparisonRange";
-import { fetchSyncStatus, fetchConfig } from "./lib/api";
+import { fetchSyncStatus, fetchConfig, fetchShopifyStatus } from "./lib/api";
 import { DateRangePicker } from "./components/DateRangePicker";
 import { AttributionBanner } from "./components/AttributionBanner";
-import { PlatformSidebar } from "./components/PlatformSidebar";
+import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
 import { PlatformSection } from "./components/PlatformSection";
+import { ShopifySection } from "./components/ShopifySection";
 import "./App.css";
 
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
@@ -18,8 +19,9 @@ const FALLBACK_TARGET_ROAS = 4;
 function App() {
   const [range, setRange] = useState<DateRange>(() => presetRange("last7"));
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("none");
-  const [activePlatform, setActivePlatform] = useState<Platform>("google");
+  const [activeSelection, setActiveSelection] = useState<SidebarSelection>("google");
   const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
+  const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
   // Distinct from "syncStatus is null" -- lets the UI tell "server
   // unreachable" apart from "haven't loaded yet", so it never mislabels
   // every platform as not-connected just because the API call itself failed.
@@ -54,6 +56,9 @@ function App() {
         setSyncStatus(null);
         setSyncStatusError(String(err?.message ?? err));
       });
+    fetchShopifyStatus()
+      .then(setShopifyStatus)
+      .catch(() => setShopifyStatus(null));
   }, []);
 
   useEffect(() => {
@@ -68,7 +73,10 @@ function App() {
     return map;
   }, [syncStatus]);
 
-  const lastSync = syncStatus?.platforms.find((s) => s.platform === activePlatform)?.lastSync ?? null;
+  const isShopify = activeSelection === "shopify";
+  const lastSync = isShopify
+    ? (shopifyStatus?.lastSync ?? null)
+    : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
 
   function handleSyncComplete() {
     setRefreshKey((k) => k + 1);
@@ -77,12 +85,17 @@ function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
-      <PlatformSidebar active={activePlatform} onChange={setActivePlatform} connected={connectedMap} />
+      <PlatformSidebar
+        active={activeSelection}
+        onChange={setActiveSelection}
+        connected={connectedMap}
+        shopifyConnected={shopifyStatus?.connected ?? false}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink-primary">{PLATFORM_LABELS[activePlatform]}</h2>
+            <h2 className="text-sm font-semibold text-ink-primary">{isShopify ? "Shopify" : PLATFORM_LABELS[activeSelection]}</h2>
             <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-ink-secondary">
               All figures in INR
             </span>
@@ -140,20 +153,31 @@ function App() {
             </div>
           )}
 
-          <AttributionBanner />
+          {!isShopify && <AttributionBanner />}
 
-          <PlatformSection
-            key={activePlatform}
-            platform={activePlatform}
-            range={range}
-            connected={connectedMap[activePlatform]}
-            lastSync={lastSync}
-            onSyncComplete={handleSyncComplete}
-            refreshKey={refreshKey}
-            grossMargin={grossMargin}
-            targetRoas={targetRoas}
-            comparisonMode={comparisonMode}
-          />
+          {isShopify ? (
+            <ShopifySection
+              key="shopify"
+              range={range}
+              connected={shopifyStatus?.connected ?? false}
+              lastSync={lastSync}
+              onSyncComplete={handleSyncComplete}
+              refreshKey={refreshKey}
+            />
+          ) : (
+            <PlatformSection
+              key={activeSelection}
+              platform={activeSelection}
+              range={range}
+              connected={connectedMap[activeSelection]}
+              lastSync={lastSync}
+              onSyncComplete={handleSyncComplete}
+              refreshKey={refreshKey}
+              grossMargin={grossMargin}
+              targetRoas={targetRoas}
+              comparisonMode={comparisonMode}
+            />
+          )}
         </main>
       </div>
     </div>

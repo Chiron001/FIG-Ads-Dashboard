@@ -3,16 +3,25 @@ import type { Platform } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { PLATFORM_COLORS } from "../lib/platformColors";
 import { PlatformIcon } from "./icons/PlatformIcon";
+import { ShopifyIcon } from "./icons/ShopifyIcon";
+
+/** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify,
+ * which isn't an ad platform (no spend/campaigns) and so isn't in the
+ * shared Platform union; it's a separate section entirely. */
+export type SidebarSelection = Platform | "shopify";
+
+const SHOPIFY_COLOR = "#95BF47";
 
 interface Props {
-  active: Platform;
-  onChange: (p: Platform) => void;
+  active: SidebarSelection;
+  onChange: (selection: SidebarSelection) => void;
   connected: Record<Platform, boolean>;
+  shopifyConnected: boolean;
 }
 
 // No localStorage per spec (React state only) -- collapse state is a
 // per-session UI preference, not data, so resetting on reload is fine.
-export function PlatformSidebar({ active, onChange, connected }: Props) {
+export function PlatformSidebar({ active, onChange, connected, shopifyConnected }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -60,6 +69,29 @@ export function PlatformSidebar({ active, onChange, connected }: Props) {
             </button>
           );
         })}
+
+        {/* Shopify isn't an ad platform -- ground-truth orders/products, own
+            group so it doesn't read as "a 5th platform" it isn't. */}
+        {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Store</div>}
+        <button
+          type="button"
+          title={collapsed ? `Shopify${shopifyConnected ? "" : " (not connected)"}` : undefined}
+          onClick={() => onChange("shopify")}
+          className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
+            collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+          } ${active === "shopify" ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
+        >
+          {active === "shopify" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />}
+          <span className="relative shrink-0" style={{ opacity: shopifyConnected ? 1 : 0.4 }}>
+            <ShopifyIcon size={18} />
+          </span>
+          {!collapsed && (
+            <>
+              <span className="flex-1 truncate">Shopify</span>
+              {!shopifyConnected && <span className="shrink-0 text-[10px] text-ink-muted">not connected</span>}
+            </>
+          )}
+        </button>
       </nav>
 
       <div className={`border-t border-border ${collapsed ? "flex justify-center py-2" : "px-4 py-3"}`}>

@@ -13,6 +13,8 @@
     "google:test": "tsx src/scripts/test-google-connector.ts",
     "meta:test": "tsx src/scripts/test-meta-connector.ts",
     "amazon:auth": "tsx src/scripts/amazon-get-refresh-token.ts",
+    "shopify:test": "tsx src/scripts/test-shopify-connector.ts",
+    "shopify:backfill": "tsx src/scripts/shopify-backfill.ts",
     "backfill": "tsx src/scripts/backfill.ts"
   },
   "dependencies": {

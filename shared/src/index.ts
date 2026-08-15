@@ -66,7 +66,8 @@ export type SyncStatus = "success" | "partial" | "error";
 
 export interface SyncLogEntry {
   id: string;
-  platform: Platform;
+  /** "shopify" isn't in Platform (it's not an ad platform -- see shopify.ts types below) but shares this same sync_log row shape. */
+  platform: Platform | "shopify";
   runAt: string; // ISO timestamptz
   status: SyncStatus;
   rows: number;
@@ -219,4 +220,47 @@ export interface PlatformSyncStatus {
 
 export interface SyncStatusResponse {
   platforms: PlatformSyncStatus[];
+}
+
+// --- Shopify (ground-truth orders/products, not an ad platform) -------------
+//
+// No spend/impressions/clicks/campaigns -- deliberately not shoehorned into
+// CanonicalRow/CampaignRow/Platform. Own tables (db/migrations/0004_shopify.sql),
+// own routes (/shopify/*), own section in the UI. Purpose: cross-check what
+// each ad platform *claims* as attributed revenue against what actually
+// happened, plus product-level detail no ad platform's fact rows have.
+
+export interface ShopifyOrderSummary {
+  orders: number;
+  revenue: number;
+  aov: number | null; // null if orders = 0
+  discounts: number;
+}
+
+export interface ShopifySummaryResponse {
+  from: string;
+  to: string;
+  summary: ShopifyOrderSummary;
+}
+
+export interface ShopifyProductRow {
+  productId: string;
+  sku: string | null;
+  title: string | null;
+  productType: string | null;
+  vendor: string | null;
+  unitsSold: number;
+  revenue: number;
+  orders: number; // distinct orders containing this product
+}
+
+export interface ShopifyProductsResponse {
+  from: string;
+  to: string;
+  products: ShopifyProductRow[];
+}
+
+export interface ShopifyStatus {
+  connected: boolean;
+  lastSync: SyncLogEntry | null;
 }

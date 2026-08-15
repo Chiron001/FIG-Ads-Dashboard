@@ -6,6 +6,9 @@ import type {
   Platform,
   TimeseriesMetric,
   AppConfig,
+  ShopifySummaryResponse,
+  ShopifyProductsResponse,
+  ShopifyStatus,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -51,6 +54,27 @@ export function fetchConfig(): Promise<AppConfig> {
 
 export async function triggerSync(platform: Platform, from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {
   const res = await fetch(`${BASE}/sync/${platform}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+  });
+  return res.json();
+}
+
+export function fetchShopifySummary(from: string, to: string): Promise<ShopifySummaryResponse> {
+  return getJSON(`/shopify/summary?from=${from}&to=${to}`);
+}
+
+export function fetchShopifyProducts(from: string, to: string): Promise<ShopifyProductsResponse> {
+  return getJSON(`/shopify/products?from=${from}&to=${to}`);
+}
+
+export function fetchShopifyStatus(): Promise<ShopifyStatus> {
+  return getJSON(`/shopify/status`);
+}
+
+export async function triggerShopifySync(from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {
+  const res = await fetch(`${BASE}/shopify/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ from, to }),

@@ -60,6 +60,12 @@ export const env = {
     region: optional("AMAZON_REGION"),
   },
 
+  shopify: {
+    // e.g. "fig-living.myshopify.com" -- no https://, no trailing slash.
+    storeDomain: optional("SHOPIFY_STORE_DOMAIN"),
+    adminAccessToken: optional("SHOPIFY_ADMIN_ACCESS_TOKEN"),
+  },
+
   // Campaign-table economics (Break-even ROAS, Profit, Verdict). The UI
   // reads these once as a starting point and lets the analyst override
   // live -- these are just the server-side defaults.

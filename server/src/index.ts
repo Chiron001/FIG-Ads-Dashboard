@@ -4,6 +4,7 @@ import { env } from "./config/env";
 import { getSupabase } from "./db/supabase";
 import { metricsRouter } from "./routes/metrics";
 import { syncRouter } from "./routes/sync";
+import { shopifyRouter } from "./routes/shopify";
 import type { AppConfig, HealthStatus } from "@fig/shared";
 
 const app = express();
@@ -12,6 +13,7 @@ app.use(express.json());
 
 app.use("/metrics", metricsRouter);
 app.use("/sync", syncRouter);
+app.use("/shopify", shopifyRouter);
 
 function nowIST(): string {
   return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T");
