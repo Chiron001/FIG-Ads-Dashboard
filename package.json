@@ -1,0 +1,23 @@
+{
+  "name": "fig-ads-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FIG Living internal ads analytics dashboard (Google, Meta, Amazon, Myntra)",
+  "workspaces": [
+    "server",
+    "web",
+    "shared"
+  ],
+  "scripts": {
+    "postinstall": "npm run build:shared",
+    "dev:server": "npm run dev --workspace server",
+    "dev:web": "npm run dev --workspace web",
+    "build:shared": "npm run build --workspace shared",
+    "build:server": "npm run build --workspace server",
+    "build:web": "npm run build --workspace web",
+    "build": "npm run build:shared && npm run build:server && npm run build:web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

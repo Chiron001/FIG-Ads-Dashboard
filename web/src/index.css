@@ -1,0 +1,13 @@
+/* Minimal reset for Phase 1. Real dark-theme design system (Tailwind,
+   tokens, layout) is built in Phase 7. */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
