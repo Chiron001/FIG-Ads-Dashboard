@@ -12,7 +12,8 @@
     "google:auth": "tsx src/scripts/google-get-refresh-token.ts",
     "google:test": "tsx src/scripts/test-google-connector.ts",
     "meta:test": "tsx src/scripts/test-meta-connector.ts",
-    "amazon:auth": "tsx src/scripts/amazon-get-refresh-token.ts"
+    "amazon:auth": "tsx src/scripts/amazon-get-refresh-token.ts",
+    "backfill": "tsx src/scripts/backfill.ts"
   },
   "dependencies": {
     "@fig/shared": "*",
