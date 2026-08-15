@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
-import type { MetaSkuAdRow, MetaSkuAdSetGroup, MetaSkuCampaignGroup, MetaSkuAttributionResponse } from "@fig/shared";
+import type { MetaSkuAdRow, MetaSkuAdSetGroup, MetaSkuCampaignGroup, MetaSkuGroupRow, MetaSkuAttributionResponse } from "@fig/shared";
 
 // Meta-only, per user request: Campaign > Ad Set > Ad drill-down, each ad's
 // spend cross-referenced against Shopify's ground-truth per-SKU revenue.
@@ -172,6 +172,30 @@ metaSkuAttributionRouter.get(
       adSetMap.get(ad.adSetId)!.push(ad);
     }
 
+    // SKU-wise spend: combine EVERY ad tagged with the same SKU, regardless
+    // of which campaign/ad set it's in, into one row. This is the fix for
+    // the exact distortion the per-ad/per-campaign views can't avoid --
+    // when N ads share a SKU tag, each one shows that SKU's full website
+    // revenue against only ITS OWN spend, so low-spend ads read as
+    // absurdly overstated. Grouped here, the denominator is the SKU's
+    // TRUE combined spend across every ad that named it, so
+    // websiteRevenue / spend is the one honest "true" website ROAS for
+    // that product -- not repeated N times at N different (wrong) values.
+    const adsBySku = new Map<string, FlatAd[]>();
+    for (const ad of ads) {
+      if (!ad.sku) continue;
+      if (!adsBySku.has(ad.sku)) adsBySku.set(ad.sku, []);
+      adsBySku.get(ad.sku)!.push(ad);
+    }
+    const skuGroups: MetaSkuGroupRow[] = [...adsBySku.entries()]
+      .map(([sku, adsForSku]): MetaSkuGroupRow => ({
+        sku,
+        adCount: adsForSku.length,
+        campaignCount: new Set(adsForSku.map((a) => a.campaignId)).size,
+        ...rollUp(adsForSku),
+      }))
+      .sort((a, b) => b.spend - a.spend);
+
     const campaigns: MetaSkuCampaignGroup[] = [...adsByCampaignThenAdSet.entries()]
       .map(([campaignId, adSetMap]): MetaSkuCampaignGroup => {
         const adSets: MetaSkuAdSetGroup[] = [...adSetMap.entries()]
@@ -199,6 +223,7 @@ metaSkuAttributionRouter.get(
       from: range.from,
       to: range.to,
       campaigns,
+      skuGroups,
       matchedAds: ads.filter((a) => a.sku != null).length,
       totalAds: ads.length,
     };

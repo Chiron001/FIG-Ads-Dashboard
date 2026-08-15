@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { MetaSkuAttributionResponse, MetaSkuAdRow, MetaSkuAdSetGroup, MetaSkuCampaignGroup } from "@fig/shared";
+import type { MetaSkuAttributionResponse, MetaSkuAdRow, MetaSkuAdSetGroup, MetaSkuCampaignGroup, MetaSkuGroupRow } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchMetaSkuAttribution } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
@@ -10,7 +10,7 @@ interface Props {
   refreshKey: number;
 }
 
-type Level = "campaign" | "adSet" | "ad";
+type Level = "campaign" | "adSet" | "ad" | "sku";
 
 // Flat row shapes per level -- each carries its parent names so the Ad Set
 // and Ad views can show "which campaign/ad set is this" without nesting.
@@ -29,8 +29,11 @@ interface AdRowFlat extends MetaSkuAdRow {
   adSetId: string;
   adSetName: string | null;
 }
+interface SkuGroupRowFlat extends MetaSkuGroupRow {
+  key: string;
+}
 
-type AnyRow = CampaignRow | AdSetRow | AdRowFlat;
+type AnyRow = CampaignRow | AdSetRow | AdRowFlat | SkuGroupRowFlat;
 
 function SkuBadge({ sku }: { sku: string | null }) {
   if (!sku) return <span className="text-xs italic text-ink-muted">no SKU tag</span>;
@@ -60,8 +63,11 @@ const COLUMNS: Column[] = [
     label: "Campaign",
     align: "left",
     levels: ["campaign", "adSet", "ad"],
-    sortValue: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : (r as CampaignRow).campaignName ?? (r as CampaignRow).campaignId),
-    render: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : (r as CampaignRow).campaignName ?? (r as CampaignRow).campaignId),
+    // All three (CampaignRow/AdSetRow/AdRowFlat) carry campaignName+campaignId
+    // as real own properties -- only SkuGroupRowFlat doesn't, and this column
+    // is never shown at the "sku" level anyway (see `levels` above).
+    sortValue: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : null),
+    render: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : "—"),
   },
   {
     key: "adSetName",
@@ -91,29 +97,59 @@ const COLUMNS: Column[] = [
     key: "sku",
     label: "SKU",
     align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("sku" in r ? (r as AdRowFlat).sku : null),
-    render: (r) => <SkuBadge sku={"sku" in r ? (r as AdRowFlat).sku : null} />,
+    levels: ["ad", "sku"],
+    sortValue: (r) => ("sku" in r ? (r as AdRowFlat | SkuGroupRowFlat).sku : null),
+    render: (r) => <SkuBadge sku={"sku" in r ? (r as AdRowFlat | SkuGroupRowFlat).sku : null} />,
   },
-  { key: "spend", label: "Spend", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.spend, render: (r) => formatCurrency(r.spend) },
+  {
+    key: "adCount",
+    label: "Ads",
+    align: "right",
+    levels: ["sku"],
+    sortValue: (r) => ("adCount" in r ? r.adCount : null),
+    render: (r) => ("adCount" in r ? formatNumber(r.adCount) : "—"),
+  },
+  {
+    key: "campaignCount",
+    label: "Campaigns",
+    align: "right",
+    levels: ["sku"],
+    sortValue: (r) => ("campaignCount" in r ? r.campaignCount : null),
+    render: (r) => ("campaignCount" in r ? formatNumber(r.campaignCount) : "—"),
+  },
+  {
+    key: "spend",
+    label: "Spend",
+    align: "right",
+    levels: ["campaign", "adSet", "ad", "sku"],
+    sortValue: (r) => r.spend,
+    render: (r) => formatCurrency(r.spend),
+  },
   {
     key: "impressions",
     label: "Impr.",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.impressions,
     render: (r) => formatNumber(r.impressions),
   },
-  { key: "clicks", label: "Clicks", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.clicks, render: (r) => formatNumber(r.clicks) },
-  { key: "ctr", label: "CTR", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.ctr, render: (r) => formatPercent(r.ctr) },
-  { key: "cvr", label: "CVR", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.cvr, render: (r) => formatPercent(r.cvr) },
-  { key: "cpc", label: "CPC", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.cpc, render: (r) => formatCurrency(r.cpc) },
-  { key: "cpa", label: "CPA", align: "right", levels: ["campaign", "adSet", "ad"], sortValue: (r) => r.cpa, render: (r) => formatCurrency(r.cpa) },
+  {
+    key: "clicks",
+    label: "Clicks",
+    align: "right",
+    levels: ["campaign", "adSet", "ad", "sku"],
+    sortValue: (r) => r.clicks,
+    render: (r) => formatNumber(r.clicks),
+  },
+  { key: "ctr", label: "CTR", align: "right", levels: ["campaign", "adSet", "ad", "sku"], sortValue: (r) => r.ctr, render: (r) => formatPercent(r.ctr) },
+  { key: "cvr", label: "CVR", align: "right", levels: ["campaign", "adSet", "ad", "sku"], sortValue: (r) => r.cvr, render: (r) => formatPercent(r.cvr) },
+  { key: "cpc", label: "CPC", align: "right", levels: ["campaign", "adSet", "ad", "sku"], sortValue: (r) => r.cpc, render: (r) => formatCurrency(r.cpc) },
+  { key: "cpa", label: "CPA", align: "right", levels: ["campaign", "adSet", "ad", "sku"], sortValue: (r) => r.cpa, render: (r) => formatCurrency(r.cpa) },
   {
     key: "conversions",
     label: "Orders",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.conversions,
     render: (r) => formatNumber(r.conversions),
   },
@@ -121,7 +157,7 @@ const COLUMNS: Column[] = [
     key: "adsRevenue",
     label: "Ads Revenue",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.adsRevenue,
     render: (r) => formatCurrency(r.adsRevenue),
   },
@@ -129,7 +165,7 @@ const COLUMNS: Column[] = [
     key: "adsRoas",
     label: "Ads ROAS",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.adsRoas,
     render: (r) => <RoasCell value={r.adsRoas} />,
   },
@@ -137,7 +173,7 @@ const COLUMNS: Column[] = [
     key: "websiteRevenue",
     label: "Website Revenue",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.websiteRevenue,
     render: (r) => formatCurrency(r.websiteRevenue),
   },
@@ -145,7 +181,7 @@ const COLUMNS: Column[] = [
     key: "websiteRoas",
     label: "Website ROAS",
     align: "right",
-    levels: ["campaign", "adSet", "ad"],
+    levels: ["campaign", "adSet", "ad", "sku"],
     sortValue: (r) => r.websiteRoas,
     render: (r) => <RoasCell value={r.websiteRoas} />,
   },
@@ -155,6 +191,7 @@ const LEVEL_OPTIONS: { value: Level; label: string }[] = [
   { value: "campaign", label: "Campaign" },
   { value: "adSet", label: "Ad Set" },
   { value: "ad", label: "Ad" },
+  { value: "sku", label: "SKU (true ROAS)" },
 ];
 
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
@@ -205,19 +242,25 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
       );
       return onlyMatched ? adSetRows.filter((s) => s.websiteRevenue != null) : adSetRows;
     }
-    const adRows: AdRowFlat[] = data.campaigns.flatMap((c) =>
-      c.adSets.flatMap((s) =>
-        s.ads.map((a) => ({
-          ...a,
-          key: a.adId,
-          campaignId: c.campaignId,
-          campaignName: c.campaignName,
-          adSetId: s.adSetId,
-          adSetName: s.adSetName,
-        }))
-      )
-    );
-    return onlyMatched ? adRows.filter((a) => a.sku != null) : adRows;
+    if (level === "ad") {
+      const adRows: AdRowFlat[] = data.campaigns.flatMap((c) =>
+        c.adSets.flatMap((s) =>
+          s.ads.map((a) => ({
+            ...a,
+            key: a.adId,
+            campaignId: c.campaignId,
+            campaignName: c.campaignName,
+            adSetId: s.adSetId,
+            adSetName: s.adSetName,
+          }))
+        )
+      );
+      return onlyMatched ? adRows.filter((a) => a.sku != null) : adRows;
+    }
+    // "sku" level -- every row already has a SKU by construction (grouped
+    // server-side from only the tagged ads), so onlyMatched is a no-op here.
+    const skuRows: SkuGroupRowFlat[] = data.skuGroups.map((g) => ({ ...g, key: g.sku }));
+    return skuRows;
   }, [data, level, onlyMatched]);
 
   const sorted = useMemo(() => {
@@ -254,10 +297,12 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
-          <input type="checkbox" checked={onlyMatched} onChange={(e) => setOnlyMatched(e.target.checked)} className="accent-platform-meta" />
-          Only show tagged {level === "campaign" ? "campaigns" : level === "adSet" ? "ad sets" : "ads"}
-        </label>
+        {level !== "sku" && (
+          <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
+            <input type="checkbox" checked={onlyMatched} onChange={(e) => setOnlyMatched(e.target.checked)} className="accent-platform-meta" />
+            Only show tagged {level === "campaign" ? "campaigns" : level === "adSet" ? "ad sets" : "ads"}
+          </label>
+        )}
       </div>
 
       <p className="text-xs text-ink-muted">
@@ -271,12 +316,25 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
         )}
       </p>
 
-      <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
-        <span className="font-medium text-status-warning">Directional, not exact: </span>
-        Website Revenue is that SKU's <em>entire</em> Shopify revenue for the period, not revenue this specific ad/ad set/campaign caused
-        — if multiple ads share the same SKU tag, each shows that SKU's full total (not split). Website ROAS gets extreme for
-        very-low-spend or freshly-launched ads; treat it as a signal, not a precise number.
-      </div>
+      {level === "sku" ? (
+        <div className="rounded-md border border-status-good/30 bg-status-good/10 px-3 py-2 text-xs text-ink-secondary">
+          <span className="font-medium text-status-good">This is the true number: </span>
+          Every ad tagged with a SKU (across every campaign and ad set) is combined into one row here, so Spend is that SKU's real
+          total spend and Website ROAS = that SKU's Shopify revenue ÷ its real total spend — not repeated at a different, distorted
+          value per ad. Use this tab, not the Campaign/Ad Set/Ad tabs, when you want one honest ROAS per product.
+        </div>
+      ) : (
+        <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
+          <span className="font-medium text-status-warning">Directional, not exact: </span>
+          Website Revenue is that SKU's <em>entire</em> Shopify revenue for the period, not revenue this specific ad/ad set/campaign
+          caused — if multiple ads share the same SKU tag, each shows that SKU's full total against only its own spend, not split.
+          Website ROAS gets extreme for very-low-spend or freshly-launched ads. For one honest ROAS per product, use the{" "}
+          <button type="button" onClick={() => setLevel("sku")} className="underline hover:text-ink-primary">
+            SKU (true ROAS)
+          </button>{" "}
+          tab instead.
+        </div>
+      )}
 
       <div className={`rounded-lg border border-border bg-surface-1 ${loading ? "opacity-60" : ""}`}>
         {sorted.length === 0 ? (

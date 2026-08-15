@@ -336,6 +336,24 @@ Build proceeds phase by phase per the project spec, committing after each.
         website ROAS on one real campaign), unmatched rows correctly show
         "no SKU tag" / "—" rather than 0, confirmed via Playwright
         with zero console errors.
+      - **4th tab: "SKU (true ROAS)"** — a second follow-up fix. The
+        Campaign/Ad Set/Ad tabs each show a SKU's *entire* revenue against
+        only *that row's own* spend, which distorts badly when several ads
+        share one SKU tag (each shows the same revenue at a different,
+        wrong ratio). This tab combines **every** ad carrying a given SKU
+        — across all campaigns and ad sets — into one row, so Spend is the
+        SKU's real combined total and Website ROAS is one honest number
+        per product, not repeated at several conflicting values. Adds
+        `adCount`/`campaignCount` for transparency (how many ads/campaigns
+        fed into that row). `MetaSkuGroupRow` (new shared type) factors the
+        same `MetaSkuPerformance` base the other three levels already use.
+        Verified live: `FIG-05-007-RD` correctly combines 2 ads into
+        ₹28.91 total spend (previously shown as two separate, much smaller
+        per-ad numbers); `FIG-01-029` combines 3. Extreme ratios still
+        appear for very-new/low-spend SKUs (flagged in the UI, same
+        `>100x` warning styling as the other tabs) — that's the real
+        Meta-spend-vs-all-channel-revenue ratio for a SKU with only a few
+        rupees of tagged spend so far, not a bug.
 
 ## Structure
 

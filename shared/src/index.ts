@@ -374,10 +374,25 @@ export interface MetaSkuCampaignGroup extends MetaSkuPerformance {
   adSets: MetaSkuAdSetGroup[];
 }
 
+/** One row per distinct SKU tag, combining EVERY ad that carries it
+ * regardless of campaign/ad set -- the fix for the per-ad/per-campaign
+ * views' distortion (N ads sharing one SKU each showing that SKU's full
+ * revenue against only their own spend). Here, spend is the SKU's TRUE
+ * combined spend across every tagged ad, so websiteRoas is the one
+ * honest "true" website ROAS for that product, not repeated N times at
+ * N different (wrong) values. */
+export interface MetaSkuGroupRow extends MetaSkuPerformance {
+  sku: string;
+  adCount: number;
+  campaignCount: number;
+}
+
 export interface MetaSkuAttributionResponse {
   from: string;
   to: string;
   campaigns: MetaSkuCampaignGroup[];
+  /** Sorted by spend desc -- one row per distinct SKU tag, see MetaSkuGroupRow. */
+  skuGroups: MetaSkuGroupRow[];
   matchedAds: number;
   totalAds: number;
 }
