@@ -1,4 +1,4 @@
-import type { AdsConnector, CanonicalRowInput, RawRow } from "@fig/shared";
+import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, RawRow } from "@fig/shared";
 import { env } from "../config/env";
 
 // Marketing API Insights edge, adset-level daily rows. Field mapping per
@@ -49,6 +49,15 @@ interface MetaInsightRow {
   actions?: MetaActionValue[];
   action_values?: MetaActionValue[];
   date_start: string;
+}
+
+interface MetaCampaignRosterRow {
+  id: string;
+  name?: string;
+  // effective_status is more informative than the basic `status` field --
+  // it reflects things like budget exhaustion / ad-set-level pauses, not
+  // just whether the campaign object itself is toggled on.
+  effective_status?: string;
 }
 
 interface MetaApiResponse<T> {
@@ -163,6 +172,34 @@ export class MetaAdsConnector implements AdsConnector {
     }
 
     return rows as unknown as RawRow[];
+  }
+
+  async fetchCampaignRoster(): Promise<CampaignRosterEntry[]> {
+    if (!this.accessToken || !this.adAccountId) {
+      throw new Error("Meta Ads connector: call authenticate() before fetchCampaignRoster().");
+    }
+
+    // Independent of any date range -- the Insights edge (fetchRaw) only
+    // ever returns adsets with actual activity in the window, so a paused
+    // or quiet-this-week campaign is invisible to it entirely. This reads
+    // straight from the campaigns edge instead.
+    let url =
+      `${GRAPH_BASE}/${this.adAccountId}/campaigns` + `?fields=id,name,effective_status` + `&limit=200` + `&access_token=${this.accessToken}`;
+
+    const rows: MetaCampaignRosterRow[] = [];
+    while (url) {
+      const page = await metaGet<MetaCampaignRosterRow>(url);
+      rows.push(...page.data);
+      url = page.paging?.next ?? "";
+    }
+
+    return rows
+      .filter((r) => r.effective_status !== "DELETED")
+      .map((r) => ({
+        campaignId: r.id,
+        campaignName: r.name ?? null,
+        status: r.effective_status ?? null,
+      }));
   }
 
   normalize(rows: RawRow[]): CanonicalRowInput[] {

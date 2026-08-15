@@ -1,16 +1,41 @@
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import type { CampaignRow } from "@fig/shared";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
+import { normalizeStatus } from "../lib/campaignStatus";
 
 interface Column {
   key: keyof CampaignRow;
   label: string;
   align: "left" | "right";
   format: (row: CampaignRow) => string;
+  render?: (row: CampaignRow) => ReactNode;
+}
+
+// Status color follows the dataviz skill's fixed status palette (good/
+// warning/critical), never the categorical platform colors -- a status
+// tone must never be confused with a series identity. Dot + label always
+// paired, never color alone.
+const STATUS_DOT_CLASS: Record<string, string> = {
+  good: "bg-status-good",
+  warning: "bg-status-warning",
+  critical: "bg-status-critical",
+  muted: "bg-ink-muted",
+};
+
+function StatusBadge({ status }: { status: string | null }) {
+  const { label, tone } = normalizeStatus(status);
+  return (
+    <span className="inline-flex items-center gap-1.5 text-ink-secondary">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT_CLASS[tone]}`} />
+      {label}
+    </span>
+  );
 }
 
 const COLUMNS: Column[] = [
   { key: "campaignName", label: "Campaign", align: "left", format: (r) => r.campaignName ?? r.campaignId },
+  { key: "status", label: "Status", align: "left", format: (r) => normalizeStatus(r.status).label, render: (r) => <StatusBadge status={r.status} /> },
   { key: "spend", label: "Spend", align: "right", format: (r) => formatCurrency(r.spend) },
   { key: "impressions", label: "Impressions", align: "right", format: (r) => formatNumber(r.impressions) },
   { key: "clicks", label: "Clicks", align: "right", format: (r) => formatNumber(r.clicks) },
@@ -64,7 +89,9 @@ export function CampaignTable({ campaigns }: Props) {
   return (
     <div className="rounded-lg border border-border bg-surface-1">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold text-ink-primary">Campaigns</h3>
+        <h3 className="text-sm font-semibold text-ink-primary">
+          Campaigns <span className="font-normal text-ink-muted">({campaigns.length})</span>
+        </h3>
         <input
           type="text"
           placeholder="Search campaigns…"
@@ -75,7 +102,7 @@ export function CampaignTable({ campaigns }: Props) {
       </div>
 
       {campaigns.length === 0 ? (
-        <div className="px-4 py-10 text-center text-sm text-ink-muted">No campaign activity in this date range.</div>
+        <div className="px-4 py-10 text-center text-sm text-ink-muted">No campaigns found for this platform.</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -105,7 +132,7 @@ export function CampaignTable({ campaigns }: Props) {
                         col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
                       } ${col.key === "campaignName" ? "max-w-xs truncate font-medium" : ""}`}
                     >
-                      {col.format(row)}
+                      {col.render ? col.render(row) : col.format(row)}
                     </td>
                   ))}
                 </tr>

@@ -1,6 +1,17 @@
-import { GoogleAdsApi, type Customer } from "google-ads-api";
-import type { AdsConnector, CanonicalRowInput, RawRow } from "@fig/shared";
+import { GoogleAdsApi, enums, type Customer } from "google-ads-api";
+import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, RawRow } from "@fig/shared";
 import { env } from "../config/env";
+
+// GAQL returns campaign.status as the protobuf enum's numeric code (e.g.
+// ENABLED=2, PAUSED=3), not its string name -- confirmed by querying the
+// live account and seeing raw "2"/"3" land in dim_campaign.status instead
+// of "ENABLED"/"PAUSED". enums.CampaignStatus is a standard TS numeric
+// enum, which compiles to a *bidirectional* map (name->code AND
+// code->name in the same object), so indexing it with the numeric code
+// gives the name back directly.
+function campaignStatusName(code: number): string {
+  return (enums.CampaignStatus as unknown as Record<number, string>)[code] ?? String(code);
+}
 
 // Google Ads reports (segments.date) are bucketed by the *account's own*
 // configured timezone, not UTC. If that account timezone isn't IST, a daily
@@ -36,6 +47,17 @@ const GAQL_QUERY = (from: string, to: string) => `
     metrics.conversions_value
   FROM ad_group
   WHERE segments.date BETWEEN '${from}' AND '${to}'
+`;
+
+// Independent of any date range -- ad_group-level performance queries only
+// ever return rows for entities with actual activity that day, so a
+// paused or simply quiet-this-week campaign is invisible to fetchRaw()
+// entirely. This is the full roster instead, straight from the campaign
+// resource. REMOVED (deleted) campaigns are excluded; PAUSED ones aren't.
+const CAMPAIGN_ROSTER_QUERY = `
+  SELECT campaign.id, campaign.name, campaign.status
+  FROM campaign
+  WHERE campaign.status != 'REMOVED'
 `;
 
 export class GoogleAdsConnector implements AdsConnector {
@@ -90,6 +112,18 @@ export class GoogleAdsConnector implements AdsConnector {
     }
     const rows = await this.customer.query(GAQL_QUERY(from, to));
     return rows as unknown as RawRow[];
+  }
+
+  async fetchCampaignRoster(): Promise<CampaignRosterEntry[]> {
+    if (!this.customer) {
+      throw new Error("Google Ads connector: call authenticate() before fetchCampaignRoster().");
+    }
+    const rows = await this.customer.query(CAMPAIGN_ROSTER_QUERY);
+    return (rows as unknown as { campaign: { id: number; name: string; status: number } }[]).map((r) => ({
+      campaignId: String(r.campaign.id),
+      campaignName: r.campaign.name ?? null,
+      status: r.campaign.status != null ? campaignStatusName(r.campaign.status) : null,
+    }));
   }
 
   normalize(rows: RawRow[]): CanonicalRowInput[] {

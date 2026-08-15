@@ -1,7 +1,7 @@
 import { getPool } from "../db/pool";
 import { GoogleAdsConnector } from "../connectors/google";
 import { MetaAdsConnector } from "../connectors/meta";
-import type { AdsConnector, CanonicalRowInput, Platform } from "@fig/shared";
+import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, Platform } from "@fig/shared";
 
 // Amazon/Myntra intentionally omitted -- on hold (Phase 4c/4d), see README.
 // runSync() below returns a clean "not implemented" sync_log entry for them
@@ -87,6 +87,32 @@ async function upsertRows(rows: CanonicalRowInput[]): Promise<number> {
   return written;
 }
 
+async function upsertCampaignRoster(platform: Platform, entries: CampaignRosterEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  const pool = getPool();
+  const values: unknown[] = [];
+  const tuples: string[] = [];
+
+  entries.forEach((entry, idx) => {
+    const base = idx * 4;
+    tuples.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
+    values.push(platform, entry.campaignId, entry.campaignName, entry.status);
+  });
+
+  await pool.query(
+    `
+      INSERT INTO dim_campaign (platform, campaign_id, campaign_name, status)
+      VALUES ${tuples.join(", ")}
+      ON CONFLICT (platform, campaign_id)
+      DO UPDATE SET
+        campaign_name = EXCLUDED.campaign_name,
+        status = EXCLUDED.status,
+        updated_at = now()
+    `,
+    values
+  );
+}
+
 export interface SyncResult {
   platform: Platform;
   status: "success" | "partial" | "error";
@@ -129,6 +155,18 @@ export async function runSync(platform: Platform, from: string, to: string): Pro
     const raw = await connector.fetchRaw(from, to);
     const rows = connector.normalize(raw);
     const written = await upsertRows(rows);
+
+    // Roster refresh is independent of the date-range fetch above and
+    // shouldn't fail the whole sync if it errors -- performance data
+    // landing successfully matters more than the roster being fresh this
+    // particular run (it'll catch up next sync).
+    try {
+      const roster = await connector.fetchCampaignRoster();
+      await upsertCampaignRoster(platform, roster);
+    } catch (rosterErr) {
+      console.warn(`[sync] ${platform} campaign roster refresh failed (fact data still wrote fine):`, rosterErr);
+    }
+
     const result: SyncResult = { platform, status: "success", rows: written, error: null };
     await logSync(result);
     return result;

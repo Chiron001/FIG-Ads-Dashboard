@@ -74,11 +74,25 @@ export interface SyncLogEntry {
 /** A raw row as returned by a platform's API/export, before normalization. */
 export type RawRow = Record<string, unknown>;
 
+/** One entry in a platform's full campaign roster -- independent of any
+ * date range, so it includes paused/zero-activity campaigns that
+ * fact_ad_performance (activity-only) would never surface. `status` is the
+ * platform's own raw string (Google: ENABLED/PAUSED; Meta: effective_status
+ * values like ACTIVE/PAUSED/ARCHIVED) -- not normalized into a shared enum,
+ * see db/migrations/0002_dim_campaign.sql. */
+export interface CampaignRosterEntry {
+  campaignId: string;
+  campaignName: string | null;
+  status: string | null;
+}
+
 export interface AdsConnector {
   platform: Exclude<Platform, "myntra">; // Myntra is CSV-ingest only, not a live connector.
   authenticate(): Promise<void>;
   fetchRaw(from: string, to: string): Promise<RawRow[]>;
   normalize(rows: RawRow[]): CanonicalRowInput[];
+  /** Full campaign list (any status except removed/deleted), independent of date range. */
+  fetchCampaignRoster(): Promise<CampaignRosterEntry[]>;
 }
 
 // --- derived metrics --------------------------------------------------------
@@ -156,6 +170,8 @@ export interface MetricsTimeseriesResponse {
 export interface CampaignRow extends DerivedMetrics {
   campaignId: string;
   campaignName: string | null;
+  /** Raw platform status string -- see CampaignRosterEntry. Null for legacy rows predating dim_campaign. */
+  status: string | null;
   spend: number;
   impressions: number;
   clicks: number;

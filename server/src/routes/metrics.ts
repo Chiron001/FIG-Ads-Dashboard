@@ -140,23 +140,44 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   }
 
   const pool = getPool();
+  // dim_campaign (full roster, any status) LEFT-merged with performance
+  // for the range -- a FULL OUTER JOIN so campaigns show up whether they
+  // have activity in this range (fact), are known but quiet/paused
+  // (roster-only), or predate the roster table entirely (fact-only,
+  // status null). See db/migrations/0002_dim_campaign.sql.
   const { rows } = await pool.query(
-    `select campaign_id, max(campaign_name) as campaign_name,
-            coalesce(sum(spend),0)::float8 as spend,
-            coalesce(sum(impressions),0)::float8 as impressions,
-            coalesce(sum(clicks),0)::float8 as clicks,
-            coalesce(sum(conversions),0)::float8 as conversions,
-            coalesce(sum(revenue),0)::float8 as revenue
-     from fact_ad_performance
-     where date between $1 and $2 and platform::text = $3
-     group by campaign_id
-     order by spend desc`,
+    `with fact as (
+       select campaign_id, max(campaign_name) as campaign_name,
+              sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks,
+              sum(conversions) as conversions, sum(revenue) as revenue
+       from fact_ad_performance
+       where date between $1 and $2 and platform::text = $3
+       group by campaign_id
+     ),
+     roster as (
+       select campaign_id, campaign_name, status
+       from dim_campaign
+       where platform::text = $3
+     )
+     select
+       coalesce(r.campaign_id, f.campaign_id) as campaign_id,
+       coalesce(r.campaign_name, f.campaign_name) as campaign_name,
+       r.status as status,
+       coalesce(f.spend, 0)::float8 as spend,
+       coalesce(f.impressions, 0)::float8 as impressions,
+       coalesce(f.clicks, 0)::float8 as clicks,
+       coalesce(f.conversions, 0)::float8 as conversions,
+       coalesce(f.revenue, 0)::float8 as revenue
+     from roster r
+     full outer join fact f on f.campaign_id = r.campaign_id
+     order by spend desc nulls last`,
     [range.from, range.to, platform]
   );
 
   const campaigns: CampaignRow[] = rows.map((r) => ({
     campaignId: r.campaign_id,
     campaignName: r.campaign_name,
+    status: r.status,
     spend: r.spend,
     impressions: r.impressions,
     clicks: r.clicks,
