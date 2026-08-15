@@ -7,6 +7,7 @@ import { syncRouter } from "./routes/sync";
 import { shopifyRouter } from "./routes/shopify";
 import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { statsRouter } from "./routes/stats";
+import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
 import type { AppConfig, HealthStatus } from "@fig/shared";
 
 const app = express();
@@ -23,6 +24,10 @@ app.use("/sync", syncRouter);
 // always wins the match, regardless of route order inside shopifyRouter.
 app.use("/shopify/oauth", shopifyOauthRouter);
 app.use("/shopify", shopifyRouter);
+// Meta ad spend cross-referenced against Shopify per-SKU revenue -- see
+// routes/metaSkuAttribution.ts. Its own top-level path (not nested under
+// /shopify or /metrics) since it genuinely reads from both.
+app.use("/meta-sku-attribution", metaSkuAttributionRouter);
 app.use("/stats", statsRouter);
 
 function nowIST(): string {

@@ -18,6 +18,7 @@ import type {
   MetricsProductsResponse,
   MetricsProductsParetoResponse,
   MetricsAdsResponse,
+  MetaSkuAttributionResponse,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -149,4 +150,10 @@ export function fetchProductsPareto(
 export function fetchAds(platform: GrainPlatform, from: string, to: string, campaignId?: string | null): Promise<MetricsAdsResponse> {
   const campaignParam = campaignId ? `&campaign_id=${encodeURIComponent(campaignId)}` : "";
   return getJSON(`/metrics/ads?platform=${platform}&from=${from}&to=${to}${campaignParam}`);
+}
+
+// --- Meta SKU attribution (Ads ROAS vs Website ROAS) ------------------------
+
+export function fetchMetaSkuAttribution(from: string, to: string): Promise<MetaSkuAttributionResponse> {
+  return getJSON(`/meta-sku-attribution?from=${from}&to=${to}`);
 }

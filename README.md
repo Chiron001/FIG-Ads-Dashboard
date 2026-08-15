@@ -282,6 +282,46 @@ Build proceeds phase by phase per the project spec, committing after each.
           window, per-product sessions ranging from real single digits to
           8k+ for top sellers, all confirmed via Playwright with zero
           console errors.
+- [x] **Meta SKU Attribution — Ads ROAS vs Website ROAS.** Meta-only, per
+      user request: a Campaign → Ad Set → Ad drill-down where each ad's
+      spend is cross-referenced against Shopify's ground-truth revenue for
+      the SKU tagged in the ad's *name* (not a real Meta field — a
+      convention the user is rolling out, e.g. `"❌FIG-05-007-RD_VID_..."`).
+      - `server/src/routes/metaSkuAttribution.ts` (new, mounted at
+        `GET /meta-sku-attribution`, its own top-level path since it reads
+        from both `fact_ad_creative_performance` and
+        `fact_shopify_line_items`): extracts a `FIG-...` token per ad name
+        (tolerant of a leading emoji/junk prefix, confirmed against real ad
+        names), then matches it against Shopify SKUs as a **prefix**, not
+        exact-match — confirmed live that some ad tokens are a shorter
+        family code shared by several variant SKUs (`FIG-01-029` alone
+        matches 4 different color/size SKUs), so a prefix match sums
+        revenue across all of them rather than silently missing 3 out of 4.
+        Rolls up Campaign/Ad Set totals weighted (sum/sum), and
+        website revenue/ROAS stay `null` (not `0`) for a group with zero
+        SKU-tagged ads, distinct from a real measured zero.
+      - **Directional, not literal per-ad attribution** — flagged with a
+        caveat banner in the UI, not swept under the rug: if two ads share
+        the same SKU tag, each shows that SKU's *entire* revenue for the
+        range (not split between them), so a fresh, low-spend ad can show
+        an extreme Website ROAS (confirmed live: a few real ₹2–7-spend ads
+        showed 18,000x+ against a shared family's full period revenue) —
+        this is exactly the "this ad's spend vs. that product's sales"
+        comparison the user asked for, not a claim that this ad caused
+        that revenue.
+      - UI: `web/src/components/MetaSkuAttributionSection.tsx` — an
+        indented single-table tree (not nested `<table>`s) with
+        click-to-expand campaign/ad-set rows, a SKU pill or "no SKU tag" on
+        each ad row, an "X of Y ads have a SKU tag" coverage line, and an
+        "Only show tagged ads" filter. Gated to `platform === "meta"` only
+        in `PlatformSection.tsx`, as its own collapsible section below Ad
+        Sets & Ads.
+      - Verified live: 10 of 240 real ads already carry a SKU tag (the
+        user's naming rollout is in progress); campaign-level rollups for
+        matched ones show sane numbers (e.g. ₹7,27,896 website revenue /
+        26.90x website ROAS on one real campaign), unmatched ads correctly
+        show "no SKU tag" / "—" rather than 0, confirmed via Playwright
+        with zero console errors.
 
 ## Structure
 

@@ -310,6 +310,75 @@ export interface ShopifyStatus {
   lastSync: SyncLogEntry | null;
 }
 
+// --- Meta SKU attribution (Ads ROAS vs Website ROAS) ------------------------
+//
+// Meta-only, per user request: a Campaign > Ad Set > Ad drill-down where
+// each ad's own spend is cross-referenced against Shopify's ground-truth
+// per-SKU revenue -- "sku" is a token matched out of the ad's *name*
+// (starting "FIG-..."), not a real ad-platform field. Most ads don't follow
+// this naming convention yet (rollout in progress on the user's end); those
+// show sku: null and websiteRevenue/websiteRoas: null rather than 0, so an
+// unmatched ad reads as "not measured" and never as "measured zero."
+//
+// adsRoas is Meta's own self-reported attributed revenue / spend (same
+// number the Ads section already shows); websiteRoas is Shopify's actual
+// order revenue for the matched SKU(s) / the SAME spend -- two different
+// ROAS answers to the same question, deliberately shown side by side, never
+// summed or blended into one number.
+
+export interface MetaSkuAdRow {
+  adId: string;
+  adName: string | null;
+  adType: string | null;
+  adStatus: string | null;
+  /** Token extracted from adName (e.g. "FIG-05-007-RD"), or null if the ad
+   * name doesn't contain one yet. Matched against Shopify SKUs as a PREFIX
+   * (a shorter token like "FIG-01-029" can match several color/size variant
+   * SKUs at once -- see extractSkuToken's comment in
+   * server/src/routes/metaSkuAttribution.ts), so this is the token as
+   * extracted, not necessarily a single exact Shopify SKU. */
+  sku: string | null;
+  spend: number;
+  adsRevenue: number;
+  adsRoas: number | null;
+  /** Sum of Shopify line-item revenue for SKUs starting with `sku`, over
+   * the same date range. Null (not 0) when sku is null or matches zero
+   * Shopify SKUs -- distinct from a real, measured ₹0. */
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface MetaSkuAdSetGroup {
+  adSetId: string;
+  adSetName: string | null;
+  ads: MetaSkuAdRow[];
+  spend: number;
+  adsRevenue: number;
+  adsRoas: number | null;
+  /** Weighted rollup of only the child ads that have a match -- null if none do. */
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface MetaSkuCampaignGroup {
+  campaignId: string;
+  campaignName: string | null;
+  adSets: MetaSkuAdSetGroup[];
+  spend: number;
+  adsRevenue: number;
+  adsRoas: number | null;
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface MetaSkuAttributionResponse {
+  from: string;
+  to: string;
+  campaigns: MetaSkuCampaignGroup[];
+  matchedAds: number;
+  totalAds: number;
+}
+
 // --- statistics layer: route response shapes (spec §3b/§2/§4/§6) -----------
 
 export interface CompareCampaignsResponse {
