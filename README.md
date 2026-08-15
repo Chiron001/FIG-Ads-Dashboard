@@ -15,9 +15,14 @@ Build proceeds phase by phase per the project spec, committing after each.
       Express skeleton with `/health` + `/health/db`, Vite/React skeleton
       wired to the server through a dev proxy, `.env.example` with every var
       the spec calls for.
-- [ ] Phase 2 — Canonical schema + migrations (`fact_ad_performance`,
-      `sync_log`, `dim_fx_rate` if needed)
-- [ ] Phase 3 — Canonical TS types in `/shared`
+- [x] **Phase 2 — Canonical schema + migrations.** `fact_ad_performance` +
+      `sync_log` in `db/migrations/0001_init.sql`, applied by a small
+      tracked runner (`npm run migrate --workspace server`). No
+      `dim_fx_rate` — confirmed all ad accounts bill in INR. **Not yet
+      applied to a live database** — needs `DATABASE_URL`.
+- [x] **Phase 3 — Canonical TS types in `/shared`.** `CanonicalRow`,
+      `SyncLogEntry`, `AdsConnector`, and `computeDerivedMetrics` (CTR/CPC/
+      CPM/ROAS/ACOS/CVR, null-safe on zero denominators — spot-checked).
 - [ ] Phase 4 — Connectors: Google → Meta → Amazon → Myntra CSV
 - [ ] Phase 5 — Normalization (timezone, FX if needed)
 - [ ] Phase 6 — API endpoints
@@ -44,6 +49,7 @@ resolvable elsewhere — this runs automatically via `postinstall` after
 ```bash
 npm install                # installs all workspaces, builds @fig/shared
 cp .env.example .env       # fill in real values as each phase needs them
+npm run migrate --workspace server   # applies db/migrations/*.sql (needs DATABASE_URL)
 ```
 
 Run the server and web app in separate terminals:
