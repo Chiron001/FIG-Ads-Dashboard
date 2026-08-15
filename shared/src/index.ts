@@ -176,6 +176,27 @@ export interface MetricsTimeseriesResponse {
   points: TimeseriesPoint[];
 }
 
+// --- statistics layer (spec: /server/stats/) --------------------------------
+//
+// Sample-size gating is mandatory (spec §0/§8): every inferential value
+// carries a confidence tag, and "insufficient" means the UI renders "—",
+// never the raw number.
+
+export type StatsConfidence = "high" | "medium" | "low" | "insufficient";
+export type ReliabilityLabel = "Stable" | "Variable" | "Volatile";
+
+export interface CampaignReliability {
+  /** Coefficient of variation on daily ROAS -- null if n<2 or mean=0. */
+  cv: number | null;
+  label: ReliabilityLabel | null;
+}
+
+export interface ConfidenceInterval {
+  low: number;
+  high: number;
+  confidence: StatsConfidence;
+}
+
 export interface CampaignRow extends DerivedMetrics {
   campaignId: string;
   campaignName: string | null;
@@ -191,6 +212,15 @@ export interface CampaignRow extends DerivedMetrics {
   searchBudgetLostImpressionShare: number | null;
   /** (ROAS_current - ROAS_prior) / ROAS_prior for the equal-length period immediately preceding `from`. Null if either period has no spend for this campaign. */
   roasDeltaWoW: number | null;
+  /** CV of daily ROAS -- "is this 5x dependable or a coin-flip" (spec §1). */
+  reliability: CampaignReliability;
+  /** Right-skew flags (spec §1: mean > 1.5x median) -- "trust the median, not the mean." */
+  roasSkewed: boolean;
+  cpaSkewed: boolean;
+  /** Wilson 95% CI on aggregate CVR (spec §3a), null only if clicks=0. The confidence tag here IS the "confidence pill next to ROAS" from spec §3c. */
+  cvrCI: ConfidenceInterval | null;
+  /** Return on the next rupee of spend vs the prior equal-length period (spec §6c). Null if spend didn't increase. */
+  marginalRoas: number | null;
 }
 
 export interface MetricsCampaignsResponse {
@@ -263,4 +293,77 @@ export interface ShopifyProductsResponse {
 export interface ShopifyStatus {
   connected: boolean;
   lastSync: SyncLogEntry | null;
+}
+
+// --- statistics layer: route response shapes (spec §3b/§2/§4/§6) -----------
+
+export interface CompareCampaignsResponse {
+  campaignA: { campaignId: string; campaignName: string | null; conversions: number; clicks: number; cvr: number };
+  campaignB: { campaignId: string; campaignName: string | null; conversions: number; clicks: number; cvr: number };
+  z: number;
+  significant: boolean;
+  verdict: string;
+  confidence: "sufficient" | "insufficient";
+}
+
+export interface AnomalyPoint {
+  date: string;
+  value: number;
+  direction: "high" | "low";
+  fenceDistance: number;
+}
+
+export interface AnomaliesResponse {
+  campaignId: string;
+  n: number;
+  spend: AnomalyPoint[];
+  cpa: AnomalyPoint[];
+  /** True once n>=8 (spec §2 IQR gate); when false, absence of flags means "not enough data," not "nothing unusual." */
+  metGate: boolean;
+}
+
+export interface CorrelationSummary {
+  r: number;
+  n: number;
+  strength: "weak" | "moderate" | "strong";
+  label: "association, not causation";
+}
+
+export interface DiminishingReturnsSummary {
+  n: number;
+  beta1: number;
+  r2: number;
+  reliable: boolean;
+  budgetCeiling: number | null;
+}
+
+export interface DiagnosticsResponse {
+  campaignId: string;
+  spendVsRoas: CorrelationSummary | null; // null if n<10 -- insufficient
+  ctrVsCvr: CorrelationSummary | null;
+  diminishingReturns: DiminishingReturnsSummary | null; // null if n<14
+}
+
+export interface ParetoPointDTO {
+  campaignId: string;
+  campaignName: string | null;
+  revenue: number;
+  cumulativePct: number;
+}
+
+export interface ContributionRowDTO {
+  campaignId: string;
+  campaignName: string | null;
+  contribution: number;
+  pctOfTotal: number | null;
+}
+
+export interface PortfolioResponse {
+  from: string;
+  to: string;
+  platform: Platform;
+  campaignsToEightyPercent: number;
+  totalCampaigns: number;
+  pareto: ParetoPointDTO[];
+  contribution: ContributionRowDTO[];
 }

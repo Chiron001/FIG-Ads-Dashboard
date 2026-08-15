@@ -8,8 +8,9 @@ import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from ".
 import { formatRelativeTime } from "../lib/relativeTime";
 import { comparisonRange, COMPARISON_LABELS, type ComparisonMode } from "../lib/comparisonRange";
 import { KpiTile } from "./KpiTile";
-import { TimeSeriesChart, type ChartPoint } from "./TimeSeriesChart";
+import { TimeSeriesChart, type ChartPoint, type SmoothingMode } from "./TimeSeriesChart";
 import { CampaignTable } from "./CampaignTable";
+import { PortfolioView } from "./PortfolioView";
 
 interface Props {
   platform: Platform;
@@ -32,6 +33,18 @@ function computeDelta(current: number | null | undefined, prior: number | null |
   return (current - prior) / prior;
 }
 
+/** Return on the *next rupee* of spend (spec §6c) -- always vs the
+ * immediately preceding period, independent of whatever the "Compare to"
+ * dropdown is set to (that's for arbitrary period comparison; this is a
+ * fixed definition). Null if spend didn't increase -- marginal analysis
+ * assumes added spend. */
+function computeMarginalRoas(current: PlatformTotals | null, prior: PlatformTotals | null): number | null {
+  if (!current || !prior) return null;
+  const deltaSpend = current.spend - prior.spend;
+  if (deltaSpend <= 0) return null;
+  return (current.revenue - prior.revenue) / deltaSpend;
+}
+
 const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: number | null | undefined) => string }[] = [
   { value: "spend", label: "Spend", formatter: (v) => formatCurrency(v, true) },
   { value: "revenue", label: "Revenue", formatter: (v) => formatCurrency(v, true) },
@@ -41,6 +54,12 @@ const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: n
   { value: "roas", label: "ROAS", formatter: (v) => formatMultiplier(v) },
   { value: "ctr", label: "CTR", formatter: (v) => formatPercent(v) },
   { value: "acos", label: "ACOS", formatter: (v) => formatPercent(v) },
+];
+
+const SMOOTHING_OPTIONS: { value: SmoothingMode; label: string }[] = [
+  { value: "ma7", label: "7d MA" },
+  { value: "ewma", label: "EWMA" },
+  { value: "raw", label: "Raw" },
 ];
 
 export function PlatformSection({
@@ -56,12 +75,15 @@ export function PlatformSection({
 }: Props) {
   const [totals, setTotals] = useState<PlatformTotals | null>(null);
   const [comparisonTotals, setComparisonTotals] = useState<PlatformTotals | null>(null);
+  const [priorPeriodTotals, setPriorPeriodTotals] = useState<PlatformTotals | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [metric, setMetric] = useState<TimeseriesMetric>("spend");
+  const [smoothing, setSmoothing] = useState<SmoothingMode>("ma7"); // spec §5: smoothed is the default, not raw
   const [points, setPoints] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPortfolio, setShowPortfolio] = useState(false);
 
   useEffect(() => {
     if (!connected) return;
@@ -70,17 +92,20 @@ export function PlatformSection({
     setError(null);
 
     const compRange = comparisonRange(range, comparisonMode);
+    const priorRange = comparisonRange(range, "previous_period");
 
     Promise.all([
       fetchSummary(range.from, range.to, [platform]),
       fetchCampaigns(range.from, range.to, platform),
       compRange ? fetchSummary(compRange.from, compRange.to, [platform]) : Promise.resolve(null),
+      priorRange ? fetchSummary(priorRange.from, priorRange.to, [platform]) : Promise.resolve(null),
     ])
-      .then(([summary, campaignsRes, compSummary]) => {
+      .then(([summary, campaignsRes, compSummary, priorSummary]) => {
         if (cancelled) return;
         setTotals(summary.platforms[0] ?? null);
         setCampaigns(campaignsRes.campaigns);
         setComparisonTotals(compSummary?.platforms[0] ?? null);
+        setPriorPeriodTotals(priorSummary?.platforms[0] ?? null);
       })
       .catch((err) => !cancelled && setError(String(err.message ?? err)))
       .finally(() => !cancelled && setLoading(false));
@@ -131,6 +156,7 @@ export function PlatformSection({
 
   const color = PLATFORM_COLORS[platform];
   const activeMetric = METRIC_OPTIONS.find((m) => m.value === metric)!;
+  const marginalRoas = computeMarginalRoas(totals, priorPeriodTotals);
 
   return (
     <div className="space-y-4">
@@ -168,7 +194,7 @@ export function PlatformSection({
         </div>
       )}
 
-      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 ${loading ? "opacity-60" : ""}`}>
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7 ${loading ? "opacity-60" : ""}`}>
         <KpiTile
           label="Spend"
           value={formatCurrency(totals?.spend)}
@@ -211,6 +237,7 @@ export function PlatformSection({
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.roas, comparisonTotals?.roas)}
           deltaLabel="vs comparison"
         />
+        <KpiTile label="Marginal ROAS" value={formatMultiplier(marginalRoas)} sublabel="next ₹ of spend, vs prior period" accent={color} />
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7 ${loading ? "opacity-60" : ""}`}>
@@ -224,24 +251,61 @@ export function PlatformSection({
       </div>
 
       <div className="rounded-lg border border-border bg-surface-1 p-4">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-ink-primary">{activeMetric.label} over time</h3>
-          <select
-            value={metric}
-            onChange={(e) => setMetric(e.target.value as TimeseriesMetric)}
-            className="rounded-md border border-border bg-surface-0 px-2 py-1 text-xs text-ink-secondary"
-          >
-            {METRIC_OPTIONS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-border p-0.5 text-xs">
+              {SMOOTHING_OPTIONS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setSmoothing(s.value)}
+                  className={`rounded px-2 py-1 transition-colors ${
+                    smoothing === s.value ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={metric}
+              onChange={(e) => setMetric(e.target.value as TimeseriesMetric)}
+              className="rounded-md border border-border bg-surface-0 px-2 py-1 text-xs text-ink-secondary"
+            >
+              {METRIC_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <TimeSeriesChart points={points} color={color} valueFormatter={activeMetric.formatter} seriesLabel={activeMetric.label} />
+        <TimeSeriesChart points={points} color={color} valueFormatter={activeMetric.formatter} seriesLabel={activeMetric.label} smoothing={smoothing} />
       </div>
 
-      <CampaignTable campaigns={campaigns} grossMargin={grossMargin} targetRoas={targetRoas} />
+      <CampaignTable campaigns={campaigns} grossMargin={grossMargin} targetRoas={targetRoas} platform={platform} range={range} />
+
+      <div className="rounded-lg border border-border bg-surface-1">
+        <button
+          type="button"
+          onClick={() => setShowPortfolio((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left"
+        >
+          <div>
+            <h3 className="text-sm font-semibold text-ink-primary">Portfolio analysis</h3>
+            <p className="text-xs text-ink-muted">Revenue concentration (Pareto) and profit contribution ranking across all campaigns.</p>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showPortfolio ? "rotate-180" : ""}`}>
+            <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        {showPortfolio && (
+          <div className="border-t border-border p-4">
+            <PortfolioView platform={platform} range={range} grossMargin={grossMargin} color={color} refreshKey={refreshKey} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -9,6 +9,10 @@ import type {
   ShopifySummaryResponse,
   ShopifyProductsResponse,
   ShopifyStatus,
+  CompareCampaignsResponse,
+  AnomaliesResponse,
+  DiagnosticsResponse,
+  PortfolioResponse,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -80,4 +84,36 @@ export async function triggerShopifySync(from: string, to: string): Promise<{ st
     body: JSON.stringify({ from, to }),
   });
   return res.json();
+}
+
+export function fetchCompareCampaigns(
+  platform: Platform,
+  from: string,
+  to: string,
+  campaignA: string,
+  campaignB: string
+): Promise<CompareCampaignsResponse> {
+  return getJSON(
+    `/stats/compare?platform=${platform}&from=${from}&to=${to}&campaignA=${encodeURIComponent(campaignA)}&campaignB=${encodeURIComponent(campaignB)}`
+  );
+}
+
+export function fetchAnomalies(platform: Platform, from: string, to: string, campaignId: string): Promise<AnomaliesResponse> {
+  return getJSON(`/stats/anomalies?platform=${platform}&from=${from}&to=${to}&campaignId=${encodeURIComponent(campaignId)}`);
+}
+
+export function fetchDiagnostics(
+  platform: Platform,
+  from: string,
+  to: string,
+  campaignId: string,
+  grossMargin: number
+): Promise<DiagnosticsResponse> {
+  return getJSON(
+    `/stats/diagnostics?platform=${platform}&from=${from}&to=${to}&campaignId=${encodeURIComponent(campaignId)}&grossMargin=${grossMargin}`
+  );
+}
+
+export function fetchPortfolio(platform: Platform, from: string, to: string, grossMargin: number): Promise<PortfolioResponse> {
+  return getJSON(`/stats/portfolio?platform=${platform}&from=${from}&to=${to}&grossMargin=${grossMargin}`);
 }

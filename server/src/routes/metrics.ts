@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { ALL_PLATFORMS, computeDerivedMetrics } from "@fig/shared";
+import { coefficientOfVariation, reliabilityLabel, isRightSkewed, wilsonInterval, marginalRoas as computeMarginalRoas } from "../stats";
 import type {
   Platform,
   DerivedMetrics,
@@ -210,11 +211,41 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   );
   const priorByCampaign = new Map(priorRows.map((r) => [r.campaign_id as string, r]));
 
+  // Daily per-campaign series -- needed for reliability (CV of daily ROAS),
+  // skew flags, and outlier/diagnostics work elsewhere. The aggregate query
+  // above can't derive these; CV/skew are properties of the day-to-day
+  // *distribution*, not the summed total.
+  const { rows: dailyRows } = await pool.query(
+    `select campaign_id, date::text as date,
+            sum(spend)::float8 as spend, sum(clicks)::float8 as clicks,
+            sum(conversions)::float8 as conversions, sum(revenue)::float8 as revenue
+     from fact_ad_performance
+     where date between $1 and $2 and platform::text = $3
+     group by campaign_id, date`,
+    [range.from, range.to, platform]
+  );
+  const dailyByCampaign = new Map<string, typeof dailyRows>();
+  for (const d of dailyRows) {
+    const list = dailyByCampaign.get(d.campaign_id) ?? [];
+    list.push(d);
+    dailyByCampaign.set(d.campaign_id, list);
+  }
+
   const campaigns: CampaignRow[] = rows.map((r) => {
     const derived = computeDerivedMetrics(r);
     const priorRow = priorByCampaign.get(r.campaign_id);
     const priorRoas = priorRow ? safeDivide(priorRow.revenue, priorRow.spend) : null;
     const roasDeltaWoW = derived.roas != null && priorRoas != null && priorRoas !== 0 ? (derived.roas - priorRoas) / priorRoas : null;
+    const marginalRoas = priorRow ? computeMarginalRoas(r.revenue, r.spend, priorRow.revenue, priorRow.spend) : null;
+
+    // Reliability (spec §1): CV of daily ROAS, excluding zero-spend days
+    // (ROAS undefined there, not 0). Skew flags on daily ROAS and daily CPA.
+    const daily = dailyByCampaign.get(r.campaign_id) ?? [];
+    const dailyRoas = daily.filter((d) => d.spend > 0).map((d) => d.revenue / d.spend);
+    const dailyCpa = daily.filter((d) => d.conversions > 0).map((d) => d.spend / d.conversions);
+    const cv = coefficientOfVariation(dailyRoas);
+
+    const cvrCI = r.clicks > 0 ? wilsonInterval(r.conversions, r.clicks) : null;
 
     return {
       campaignId: r.campaign_id,
@@ -228,6 +259,11 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
       searchImpressionShare: r.search_impression_share,
       searchBudgetLostImpressionShare: r.search_budget_lost_impression_share,
       roasDeltaWoW,
+      reliability: { cv, label: reliabilityLabel(cv) },
+      roasSkewed: isRightSkewed(dailyRoas),
+      cpaSkewed: isRightSkewed(dailyCpa),
+      cvrCI: cvrCI ? { low: cvrCI.low, high: cvrCI.high, confidence: cvrCI.confidence } : null,
+      marginalRoas,
       ...derived,
     };
   });

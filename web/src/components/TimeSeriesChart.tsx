@@ -1,26 +1,41 @@
+import { useMemo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import { formatDateLabel } from "../lib/format";
+import { movingAverage, ewma } from "../lib/smoothing";
 
 export interface ChartPoint {
   date: string;
   value: number | null;
 }
 
+export type SmoothingMode = "raw" | "ma7" | "ewma";
+
 interface Props {
   points: ChartPoint[];
   color: string;
   valueFormatter: (v: number | null | undefined) => string;
   seriesLabel: string;
+  /** Spec §5: a 7-day moving average (or EWMA) is meant to be the *default*
+   * line on trend charts, not the raw jumpy daily values -- "raw" is still
+   * offered as an explicit toggle choice. */
+  smoothing?: SmoothingMode;
 }
 
 // Single-series line chart (one platform, one metric) — no legend needed,
 // the card title above this already names the series (dataviz skill: a
 // single series needs no legend box). Crosshair + one-row tooltip per
 // interaction.md.
-export function TimeSeriesChart({ points, color, valueFormatter, seriesLabel }: Props) {
+export function TimeSeriesChart({ points, color, valueFormatter, seriesLabel, smoothing = "raw" }: Props) {
+  const displayPoints = useMemo(() => {
+    if (smoothing === "raw") return points;
+    const values = points.map((p) => p.value);
+    const smoothed = smoothing === "ma7" ? movingAverage(values, 7) : ewma(values, 0.3);
+    return points.map((p, i) => ({ date: p.date, value: smoothed[i] }));
+  }, [points, smoothing]);
+
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+      <LineChart data={displayPoints} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="var(--color-grid)" vertical={false} />
         <XAxis
           dataKey="date"

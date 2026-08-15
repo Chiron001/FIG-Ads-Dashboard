@@ -87,6 +87,40 @@ Build proceeds phase by phase per the project spec, committing after each.
       sync pieces exist (`server/src/scripts/backfill.ts`, the "Sync now"
       button, `POST /sync/:platform`) but there's still no `node-cron` daily
       job — syncing only happens when triggered by hand.
+- [x] **Statistical Analysis Layer.** Implements the spec's sample-size-gated
+      rigor rules on top of Google Ads (and reusable for any platform):
+      - `server/src/stats/` — 7 pure modules (descriptive, outliers,
+        inference, correlation, regression, smoothing, concentration), **55
+        unit tests, all passing** (`npm test --workspace server`), covering
+        the mandated fixtures: zero denominators, n=1, n=2, all-equal
+        values, single outlier, known-answer cases. Deferred methods
+        (chi-square, Gini, CUSUM, Holt-Winters, LTV:CAC) are marked
+        `// out of scope` inline per spec §0 rather than built.
+      - New endpoints: `GET /stats/compare` (two-proportion z-test on CVR,
+        gated at ≥100 conversions/side), `GET /stats/anomalies` (IQR
+        primary / z-score fallback on daily spend+CPA, gated at n≥8),
+        `GET /stats/diagnostics` (Pearson correlation + log-regression
+        diminishing-returns budget ceiling per campaign), `GET
+        /stats/portfolio` (Pareto 80/20 + profit-contribution ranking).
+      - `GET /metrics/campaigns` extended inline (cheap enough to compute
+        for every row): reliability label (CV of daily ROAS), skew flags,
+        Wilson 95% CI on CVR, marginal ROAS.
+      - UI: confidence dot + skew flag inline on the ROAS cell, a
+        Reliability column, a Marginal ROAS column + KPI tile (vs the
+        immediately preceding period, independent of the "Compare to"
+        dropdown), a "Compare two campaigns" modal, a per-campaign detail
+        modal (Anomalies/Diagnostics tabs), a collapsible Portfolio section
+        (Pareto chart + contribution table — the one deliberate dual-axis
+        chart exception, per `dataviz` skill), and a 7d-MA/EWMA/Raw
+        smoothing toggle on the trend chart (MA is the default line, not
+        raw, per spec §5). Every inferential output shows its confidence
+        tag and `n`; correlations are always labeled "association, not
+        causation"; divide-by-zero renders "—", never 0/NaN/Infinity.
+      - No new migration needed — computed entirely from existing
+        `fact_ad_performance` daily rows.
+      - Verified live against real Google Ads data (curl on every new
+        endpoint + Playwright screenshots of every new UI surface) before
+        commit.
 
 ## Structure
 

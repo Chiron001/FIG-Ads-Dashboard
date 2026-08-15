@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import type { CampaignRow } from "@fig/shared";
+import type { CampaignRow, Platform } from "@fig/shared";
 import { computeDerivedMetrics } from "@fig/shared";
 import {
   formatCurrency,
@@ -12,6 +12,10 @@ import {
 } from "../lib/format";
 import { normalizeStatus } from "../lib/campaignStatus";
 import { computeMedians, verdictFor, type Verdict } from "../lib/verdict";
+import { CONFIDENCE_TONE } from "../lib/statsFormat";
+import type { DateRange } from "../lib/dateRanges";
+import { CampaignDetailPanel } from "./CampaignDetailPanel";
+import { CompareCampaignsPanel } from "./CompareCampaignsPanel";
 
 // Every row here plus the client-computed columns that depend on live
 // config (gross margin, target ROAS) or on the currently-visible row set
@@ -66,6 +70,46 @@ function signClass(value: number | null): string {
   if (value > 0) return "text-status-good";
   if (value < 0) return "text-status-critical";
   return "";
+}
+
+const CONFIDENCE_DOT_CLASS: Record<string, string> = {
+  good: "bg-status-good",
+  warning: "bg-status-warning",
+  critical: "bg-status-critical",
+  muted: "bg-ink-muted",
+};
+
+/** Spec §3c: "confidence pill next to ROAS" -- a small dot on the ROAS cell
+ * itself rather than a separate column, so it reads as a property of the
+ * ROAS number, not a disconnected fact. */
+function RoasWithConfidence({ row }: { row: EnrichedRow }) {
+  const confidence = row.cvrCI?.confidence;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {formatMultiplier(row.roas)}
+      {row.roasSkewed && (
+        <span title="Right-skewed ROAS — trust the median, not this average" className="text-status-warning">
+          ⚠
+        </span>
+      )}
+      {confidence && (
+        <span
+          title={confidence === "insufficient" ? "Not enough clicks to trust this ROAS/CVR yet" : `${confidence} confidence (n=${formatNumber(row.clicks)} clicks)`}
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${CONFIDENCE_DOT_CLASS[CONFIDENCE_TONE[confidence]]}`}
+        />
+      )}
+    </span>
+  );
+}
+
+function ReliabilityBadge({ row }: { row: EnrichedRow }) {
+  if (row.reliability.label == null) return <span className="text-ink-muted">—</span>;
+  const cls = row.reliability.label === "Stable" ? "text-status-good" : row.reliability.label === "Variable" ? "text-status-warning" : "text-status-critical";
+  return (
+    <span className={cls} title={`CV ${formatPercent(row.reliability.cv, 1)} on daily ROAS`}>
+      {row.reliability.label}
+    </span>
+  );
 }
 
 type Tier = "decision" | "detailed";
@@ -159,7 +203,30 @@ const COLUMNS: Column[] = [
     sortValue: (r) => r.spendRevDelta,
     render: (r) => <span className={signClass(r.spendRevDelta)}>{formatPercentagePoints(r.spendRevDelta)}</span>,
   },
-  { key: "roas", label: "ROAS", align: "right", tiers: ["decision", "detailed"], sortValue: (r) => r.roas, render: (r) => formatMultiplier(r.roas) },
+  {
+    key: "roas",
+    label: "ROAS",
+    align: "right",
+    tiers: ["decision", "detailed"],
+    sortValue: (r) => r.roas,
+    render: (r) => <RoasWithConfidence row={r} />,
+  },
+  {
+    key: "reliability",
+    label: "Reliability",
+    align: "right",
+    tiers: ["decision", "detailed"],
+    sortValue: (r) => r.reliability.cv,
+    render: (r) => <ReliabilityBadge row={r} />,
+  },
+  {
+    key: "marginalRoas",
+    label: "Marginal ROAS",
+    align: "right",
+    tiers: ["decision", "detailed"],
+    sortValue: (r) => r.marginalRoas,
+    render: (r) => formatMultiplier(r.marginalRoas),
+  },
   {
     key: "breakEvenRoas",
     label: "Break-even ROAS",
@@ -208,7 +275,15 @@ const COLUMNS: Column[] = [
 // wouldn't mean what it looks like it means (a naive average of per-
 // campaign impression shares isn't impression-weighted, so it's not the
 // account's real impression share).
-const NO_SUMMARY_COLUMNS = new Set(["status", "verdict", "searchImpressionShare", "searchBudgetLostImpressionShare", "roasDeltaWoW"]);
+const NO_SUMMARY_COLUMNS = new Set([
+  "status",
+  "verdict",
+  "searchImpressionShare",
+  "searchBudgetLostImpressionShare",
+  "roasDeltaWoW",
+  "reliability", // CV isn't portfolio-summable/weighted-averageable in a meaningful way
+  "marginalRoas", // would need a second prior-period aggregate fetch; not built for the summary row
+]);
 
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
   // Nulls always sort last regardless of direction (spec §5).
@@ -226,14 +301,18 @@ interface Props {
   campaigns: CampaignRow[];
   grossMargin: number;
   targetRoas: number;
+  platform: Platform;
+  range: DateRange;
 }
 
-export function CampaignTable({ campaigns, grossMargin, targetRoas }: Props) {
+export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, range }: Props) {
   const [search, setSearch] = useState("");
   const [hideZeroSpend, setHideZeroSpend] = useState(true); // spec §5 default
   const [tier, setTier] = useState<Tier>("decision"); // spec §4 default
   const [sortKey, setSortKey] = useState("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [detailCampaignId, setDetailCampaignId] = useState<string | null>(null);
+  const [showCompare, setShowCompare] = useState(false);
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -299,6 +378,11 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas }: Props) {
       searchImpressionShare: null,
       searchBudgetLostImpressionShare: null,
       roasDeltaWoW: null,
+      reliability: { cv: null, label: null }, // not portfolio-summable -- see NO_SUMMARY_COLUMNS
+      roasSkewed: false,
+      cpaSkewed: false,
+      cvrCI: null,
+      marginalRoas: null,
       profit: sums.revenue * grossMargin - sums.spend,
       breakEvenRoas,
       pctOfSpend: sums.spend > 0 ? 1 : null,
@@ -326,6 +410,13 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas }: Props) {
           Campaigns <span className="font-normal text-ink-muted">({sorted.length})</span>
         </h3>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCompare(true)}
+            className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-ink-secondary hover:bg-surface-2 transition-colors"
+          >
+            Compare two campaigns
+          </button>
           <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
             <input type="checkbox" checked={hideZeroSpend} onChange={(e) => setHideZeroSpend(e.target.checked)} className="accent-platform-google" />
             Hide zero-spend
@@ -387,7 +478,18 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas }: Props) {
                         col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
                       } ${col.key === "campaignName" ? "max-w-xs truncate font-medium" : ""}`}
                     >
-                      {col.render(row)}
+                      {col.key === "campaignName" ? (
+                        <button
+                          type="button"
+                          onClick={() => setDetailCampaignId(row.campaignId)}
+                          className="max-w-full truncate text-left hover:underline"
+                          title="View reliability, anomalies, and diagnostics"
+                        >
+                          {col.render(row)}
+                        </button>
+                      ) : (
+                        col.render(row)
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -410,6 +512,22 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas }: Props) {
           </table>
         </div>
       )}
+
+      {detailCampaignId &&
+        (() => {
+          const campaign = enriched.find((c) => c.campaignId === detailCampaignId);
+          return campaign ? (
+            <CampaignDetailPanel
+              platform={platform}
+              range={range}
+              grossMargin={grossMargin}
+              campaign={campaign}
+              onClose={() => setDetailCampaignId(null)}
+            />
+          ) : null;
+        })()}
+
+      {showCompare && <CompareCampaignsPanel platform={platform} range={range} campaigns={campaigns} onClose={() => setShowCompare(false)} />}
     </div>
   );
 }
