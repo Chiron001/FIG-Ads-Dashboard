@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "google:auth": "tsx src/scripts/google-get-refresh-token.ts",
-    "google:test": "tsx src/scripts/test-google-connector.ts"
+    "google:test": "tsx src/scripts/test-google-connector.ts",
+    "meta:test": "tsx src/scripts/test-meta-connector.ts"
   },
   "dependencies": {
     "@fig/shared": "*",
