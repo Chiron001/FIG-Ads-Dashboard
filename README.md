@@ -37,22 +37,55 @@ Build proceeds phase by phase per the project spec, committing after each.
         a System User token (Employee role, `ads_read` only, no expiry,
         least-privilege by design). Smoke test:
         `npm run meta:test --workspace server`.
-      - [ ] Amazon Ads
-      - [ ] Myntra CSV ingest
-- [ ] Phase 5 — Normalization (timezone, FX if needed)
-- [ ] Phase 6 — API endpoints
-- [ ] Phase 7 — Dashboard UI
-- [ ] Phase 8 — Scheduler + token refresh + backfill
+      - [ ] **Amazon Ads — on hold** (user's call, 2026-08-15). Refresh-token
+        + profile-discovery script is ready (`npm run amazon:auth
+        --workspace server`) for whenever this resumes.
+      - [ ] **Myntra CSV ingest — on hold** (same decision).
+- [x] **Phase 5 — Normalization (partial).** Timezone: each connector
+      checks the source account's own timezone in `authenticate()` and warns
+      (never silently mislabels) if it isn't IST — both live accounts
+      (Google, Meta) confirmed IST. FX: skipped entirely per the Phase 2
+      confirmation (all accounts bill INR). Not yet done: Amazon/Myntra are
+      on hold, so their normalization is moot for now.
+- [x] **Phase 6 — API endpoints**, all verified live against real backfilled
+      data (`server/src/routes/metrics.ts`, `server/src/routes/sync.ts`):
+      `GET /metrics/summary`, `GET /metrics/timeseries`,
+      `GET /metrics/campaigns`, `GET /sync/status`, `POST /sync/:platform`.
+      (`POST /ingest/myntra` not built — Myntra on hold.)
+- [x] **Phase 7 — Dashboard UI**, restructured per explicit request into 4
+      platform-tab sections (Google/Meta/Amazon/Myntra) rather than the
+      spec's single blended-comparison hero table — each tab is a fully
+      detailed KPI + time series + campaign-table view for that platform
+      alone. Dark theme (Tailwind v4 + Recharts), date range picker with
+      Yesterday/Last 7/Last 30 Days presets + custom range. Verified
+      end-to-end with Playwright screenshots against live data — see
+      `web/src/App.tsx` and `web/src/components/`.
+- [ ] Phase 8 — Scheduler + token refresh + backfill. Manual pieces exist
+      (`server/src/scripts/backfill.ts`, the "Sync now" button, `POST
+      /sync/:platform`) but there's no `node-cron` daily job yet, and no
+      deployment target for `/server` (Vercel can't run it — needs a
+      persistent process; **Railway** was chosen for this, not yet set up).
 
 ## Structure
 
 ```
-/server        Express API + connectors + ETL + cron
-/web           React dashboard (Vite)
-/db/migrations SQL migrations
-/shared        canonical TS types, imported by both server and web
+/server
+  src/connectors    per-platform AdsConnector implementations (google.ts, meta.ts)
+  src/routes        Express routes (metrics.ts, sync.ts)
+  src/etl           sync.ts -- authenticate/fetchRaw/normalize/upsert per platform
+  src/db            pool.ts (pg, for writes/queries) + supabase.ts (health check only)
+  src/scripts       one-off/manual scripts (migrate, backfill, connector smoke tests,
+                     OAuth refresh-token helpers)
+/web              React dashboard (Vite + Tailwind v4 + Recharts)
+/db/migrations    SQL migrations
+/shared           canonical TS types + API response shapes, imported by both server and web
 .env.example
 ```
+
+Writes to `fact_ad_performance` go through raw `pg` (`server/src/db/pool.ts`),
+not Supabase-js — the upsert conflict target is an expression-based unique
+index (`coalesce(ad_group_id, '')`), which Supabase-js's `.upsert()` can't
+target. Supabase-js is kept only for the lightweight `/health/db` check.
 
 `server` and `web` depend on `shared` via npm workspaces (`@fig/shared`).
 `shared` must be built (`npm run build:shared`) before its types are
@@ -81,6 +114,12 @@ curl http://localhost:4000/health       # {"ok":true,...}
 curl http://localhost:4000/health/db    # ok:false until SUPABASE_* is set
 ```
 
+Load real data (needs Google/Meta credentials in `.env`):
+
+```bash
+npm run backfill --workspace server -- --days=30 --platforms=google,meta
+```
+
 ## Manual prerequisites (not codeable — see spec §10)
 
 1. **Google Ads:** developer token approval + OAuth refresh token. Done —
@@ -91,15 +130,23 @@ curl http://localhost:4000/health/db    # ok:false until SUPABASE_* is set
    client under a manager (MCC) account, so `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
    (the manager's id) is required even for a user with direct access to the
    client account.
-2. **Meta:** app with `ads_read`, pass App Review, generate long-lived token.
-3. **Amazon Ads:** register for the Advertising API, LWA setup, get profile ID.
-4. **Myntra:** locate the CSV export in the seller/partner panel; note the
-   exact column headers so the ingest mapping config matches.
-5. **Confirm:** which ad accounts bill in INR vs USD — decides whether the
-   FX layer (`dim_fx_rate`) gets built in Phase 5, or skipped entirely.
-6. **Supabase:** create a project, get `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, and the direct Postgres `DATABASE_URL` for
-   running migrations.
+2. **Meta:** done — a System User token (`ads_read` only, Employee role,
+   "View performance" asset access only), generated once through Business
+   Settings (no script needed; System User tokens don't use an OAuth
+   refresh flow and, set to "Never" expire, don't need periodic renewal
+   either). No App Review was needed — the app only ever accesses ad
+   accounts its own admins/System Users have a role on (Standard Access),
+   not third-party accounts.
+3. **Amazon Ads — on hold.** Registration + LWA setup not done yet. When
+   resumed: `server/src/scripts/amazon-get-refresh-token.ts` (`npm run
+   amazon:auth --workspace server`) handles the refresh token and also
+   auto-discovers the profile ID + region.
+4. **Myntra — on hold.** Locate the CSV export in the seller/partner panel;
+   note the exact column headers so the ingest mapping config matches, when
+   this resumes.
+5. **Confirmed:** all ad accounts (Google, Meta) bill in INR — FX layer
+   skipped entirely, see Phase 5 above.
+6. **Supabase:** done — see Phase 2 above.
 
 ## Non-negotiables from the spec
 
