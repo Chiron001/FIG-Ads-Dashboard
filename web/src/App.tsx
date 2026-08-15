@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Platform, SyncStatusResponse } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
+import { COMPARISON_LABELS, COMPARISON_MODE_ORDER, type ComparisonMode } from "./lib/comparisonRange";
 import { fetchSyncStatus, fetchConfig } from "./lib/api";
 import { DateRangePicker } from "./components/DateRangePicker";
 import { AttributionBanner } from "./components/AttributionBanner";
@@ -16,6 +17,7 @@ const FALLBACK_TARGET_ROAS = 4;
 
 function App() {
   const [range, setRange] = useState<DateRange>(() => presetRange("last7"));
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("none");
   const [activePlatform, setActivePlatform] = useState<Platform>("google");
   const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
   // Distinct from "syncStatus is null" -- lets the UI tell "server
@@ -74,10 +76,10 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-surface-0">
+    <div className="flex h-screen overflow-hidden bg-surface-0">
       <PlatformSidebar active={activePlatform} onChange={setActivePlatform} connected={connectedMap} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-ink-primary">{PLATFORM_LABELS[activePlatform]}</h2>
@@ -114,6 +116,18 @@ function App() {
                 x
               </label>
             </div>
+            <select
+              value={comparisonMode}
+              onChange={(e) => setComparisonMode(e.target.value as ComparisonMode)}
+              title="Compare KPIs against another period"
+              className="rounded-md border border-border bg-surface-1 px-2.5 py-2 text-sm text-ink-secondary"
+            >
+              {COMPARISON_MODE_ORDER.map((mode) => (
+                <option key={mode} value={mode}>
+                  {COMPARISON_LABELS[mode]}
+                </option>
+              ))}
+            </select>
             <DateRangePicker value={range} onChange={setRange} />
           </div>
         </header>
@@ -138,6 +152,7 @@ function App() {
             refreshKey={refreshKey}
             grossMargin={grossMargin}
             targetRoas={targetRoas}
+            comparisonMode={comparisonMode}
           />
         </main>
       </div>

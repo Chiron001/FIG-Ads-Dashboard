@@ -6,6 +6,7 @@ import { fetchSummary, fetchTimeseries, fetchCampaigns, triggerSync } from "../l
 import { PLATFORM_COLORS } from "../lib/platformColors";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { formatRelativeTime } from "../lib/relativeTime";
+import { comparisonRange, COMPARISON_LABELS, type ComparisonMode } from "../lib/comparisonRange";
 import { KpiTile } from "./KpiTile";
 import { TimeSeriesChart, type ChartPoint } from "./TimeSeriesChart";
 import { CampaignTable } from "./CampaignTable";
@@ -20,6 +21,15 @@ interface Props {
   refreshKey: number;
   grossMargin: number;
   targetRoas: number;
+  comparisonMode: ComparisonMode;
+}
+
+/** % change vs the comparison period; null (not undefined) when the
+ * comparison itself is undefined (zero/missing prior value), which
+ * KpiTile renders as "—" rather than a misleading 0%. */
+function computeDelta(current: number | null | undefined, prior: number | null | undefined): number | null {
+  if (current == null || prior == null || prior === 0) return null;
+  return (current - prior) / prior;
 }
 
 const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: number | null | undefined) => string }[] = [
@@ -33,8 +43,19 @@ const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: n
   { value: "acos", label: "ACOS", formatter: (v) => formatPercent(v) },
 ];
 
-export function PlatformSection({ platform, range, connected, lastSync, onSyncComplete, refreshKey, grossMargin, targetRoas }: Props) {
+export function PlatformSection({
+  platform,
+  range,
+  connected,
+  lastSync,
+  onSyncComplete,
+  refreshKey,
+  grossMargin,
+  targetRoas,
+  comparisonMode,
+}: Props) {
   const [totals, setTotals] = useState<PlatformTotals | null>(null);
+  const [comparisonTotals, setComparisonTotals] = useState<PlatformTotals | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [metric, setMetric] = useState<TimeseriesMetric>("spend");
   const [points, setPoints] = useState<ChartPoint[]>([]);
@@ -48,14 +69,18 @@ export function PlatformSection({ platform, range, connected, lastSync, onSyncCo
     setLoading(true);
     setError(null);
 
+    const compRange = comparisonRange(range, comparisonMode);
+
     Promise.all([
       fetchSummary(range.from, range.to, [platform]),
       fetchCampaigns(range.from, range.to, platform),
+      compRange ? fetchSummary(compRange.from, compRange.to, [platform]) : Promise.resolve(null),
     ])
-      .then(([summary, campaignsRes]) => {
+      .then(([summary, campaignsRes, compSummary]) => {
         if (cancelled) return;
         setTotals(summary.platforms[0] ?? null);
         setCampaigns(campaignsRes.campaigns);
+        setComparisonTotals(compSummary?.platforms[0] ?? null);
       })
       .catch((err) => !cancelled && setError(String(err.message ?? err)))
       .finally(() => !cancelled && setLoading(false));
@@ -63,7 +88,7 @@ export function PlatformSection({ platform, range, connected, lastSync, onSyncCo
     return () => {
       cancelled = true;
     };
-  }, [platform, range.from, range.to, connected, refreshKey]);
+  }, [platform, range.from, range.to, connected, refreshKey, comparisonMode]);
 
   useEffect(() => {
     if (!connected) return;
@@ -136,13 +161,56 @@ export function PlatformSection({ platform, range, connected, lastSync, onSyncCo
         </div>
       )}
 
+      {comparisonMode !== "none" && (
+        <div className="text-xs text-ink-muted">
+          Comparing to <span className="text-ink-secondary">{COMPARISON_LABELS[comparisonMode].toLowerCase()}</span>
+          {comparisonTotals === null && !loading && " — no data for that period"}
+        </div>
+      )}
+
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 ${loading ? "opacity-60" : ""}`}>
-        <KpiTile label="Spend" value={formatCurrency(totals?.spend)} accent={color} />
-        <KpiTile label="Impressions" value={formatNumber(totals?.impressions, true)} accent={color} />
-        <KpiTile label="Clicks" value={formatNumber(totals?.clicks)} accent={color} />
-        <KpiTile label="Orders" value={formatNumber(totals?.conversions)} accent={color} />
-        <KpiTile label="Revenue" value={formatCurrency(totals?.revenue)} accent={color} />
-        <KpiTile label="ROAS" value={formatMultiplier(totals?.roas)} accent={color} />
+        <KpiTile
+          label="Spend"
+          value={formatCurrency(totals?.spend)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.spend, comparisonTotals?.spend)}
+          deltaLabel="vs comparison"
+        />
+        <KpiTile
+          label="Impressions"
+          value={formatNumber(totals?.impressions, true)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.impressions, comparisonTotals?.impressions)}
+          deltaLabel="vs comparison"
+        />
+        <KpiTile
+          label="Clicks"
+          value={formatNumber(totals?.clicks)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.clicks, comparisonTotals?.clicks)}
+          deltaLabel="vs comparison"
+        />
+        <KpiTile
+          label="Orders"
+          value={formatNumber(totals?.conversions)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.conversions, comparisonTotals?.conversions)}
+          deltaLabel="vs comparison"
+        />
+        <KpiTile
+          label="Revenue"
+          value={formatCurrency(totals?.revenue)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.revenue, comparisonTotals?.revenue)}
+          deltaLabel="vs comparison"
+        />
+        <KpiTile
+          label="ROAS"
+          value={formatMultiplier(totals?.roas)}
+          accent={color}
+          delta={comparisonMode === "none" ? undefined : computeDelta(totals?.roas, comparisonTotals?.roas)}
+          deltaLabel="vs comparison"
+        />
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7 ${loading ? "opacity-60" : ""}`}>

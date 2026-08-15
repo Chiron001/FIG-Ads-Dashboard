@@ -31,7 +31,7 @@ export function PlatformSidebar({ active, onChange, connected }: Props) {
         )}
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-2">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
         {!collapsed && <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Platforms</div>}
         {ALL_PLATFORMS.map((platform) => {
           const isActive = platform === active;
