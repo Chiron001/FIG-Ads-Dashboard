@@ -66,6 +66,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
   const [pareto, setPareto] = useState<MetricsProductsParetoResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [showTailLeaks, setShowTailLeaks] = useState(false);
+  const [hideZeroSpend, setHideZeroSpend] = useState(true); // same default as the campaign table / Ads section
 
   // Switching platform (tab change) resets to that platform's default
   // grouping -- a stale "type_l1" carried over from Google would silently
@@ -95,9 +96,10 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
 
   const enriched = useMemo((): EnrichedProductRow[] => {
     if (!data) return [];
-    const totalSpend = data.products.reduce((s, p) => s + p.spend, 0);
-    const totalRevenue = data.products.reduce((s, p) => s + p.revenue, 0);
-    return data.products
+    const visible = data.products.filter((p) => !hideZeroSpend || p.spend > 0);
+    const totalSpend = visible.reduce((s, p) => s + p.spend, 0);
+    const totalRevenue = visible.reduce((s, p) => s + p.revenue, 0);
+    return visible
       .map((p) => ({
         key: p.key,
         label: productLabel(p),
@@ -119,7 +121,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
         pctOfRevenue: totalRevenue > 0 ? p.revenue / totalRevenue : null,
       }))
       .sort((a, b) => b.spend - a.spend);
-  }, [data, grossMargin]);
+  }, [data, grossMargin, hideZeroSpend]);
 
   const platformCampaigns = campaigns; // caller already scopes this to the current platform
 
@@ -153,6 +155,15 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
               </button>
             ))}
           </div>
+          <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
+            <input
+              type="checkbox"
+              checked={hideZeroSpend}
+              onChange={(e) => setHideZeroSpend(e.target.checked)}
+              className={platform === "google" ? "accent-platform-google" : "accent-platform-meta"}
+            />
+            Hide zero-spend
+          </label>
         </div>
       </div>
 
@@ -211,7 +222,9 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
 
       <div className={`mt-3 overflow-x-auto ${loading ? "opacity-60" : ""}`}>
         {enriched.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-ink-muted">No product data for this range yet.</div>
+          <div className="px-4 py-10 text-center text-sm text-ink-muted">
+            {data && data.products.length > 0 ? "No products match the current filters." : "No product data for this range yet."}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
