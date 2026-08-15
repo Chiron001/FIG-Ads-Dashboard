@@ -8,7 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "migrate": "tsx src/db/migrate.ts"
+    "migrate": "tsx src/db/migrate.ts",
+    "google:auth": "tsx src/scripts/google-get-refresh-token.ts"
   },
   "dependencies": {
     "@fig/shared": "*",
