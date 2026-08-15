@@ -2,11 +2,16 @@ import express from "express";
 import cors from "cors";
 import { env } from "./config/env";
 import { getSupabase } from "./db/supabase";
+import { metricsRouter } from "./routes/metrics";
+import { syncRouter } from "./routes/sync";
 import type { HealthStatus } from "@fig/shared";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+app.use("/metrics", metricsRouter);
+app.use("/sync", syncRouter);
 
 function nowIST(): string {
   return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T");
@@ -48,6 +53,14 @@ app.get("/health/db", async (_req, res) => {
   } catch (err) {
     return res.status(500).json({ ok: false, reason: (err as Error).message });
   }
+});
+
+// Catches errors forwarded by asyncHandler (see util/asyncHandler.ts) --
+// without this, an async route that throws just hangs the request in
+// Express 4 rather than returning a clean error response.
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: err.message });
 });
 
 app.listen(env.port, () => {

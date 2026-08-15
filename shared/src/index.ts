@@ -6,6 +6,18 @@
 
 export type Platform = "google" | "meta" | "amazon" | "myntra";
 
+/** Fixed display/processing order — also used as the categorical color-slot
+ * assignment order in the UI (dataviz skill: assign hues in fixed order,
+ * never cycled). */
+export const ALL_PLATFORMS: Platform[] = ["google", "meta", "amazon", "myntra"];
+
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  google: "Google Ads",
+  meta: "Meta Ads",
+  amazon: "Amazon Ads",
+  myntra: "Myntra Ads",
+};
+
 export interface HealthStatus {
   ok: boolean;
   service: string;
@@ -126,4 +138,45 @@ export interface MetricsSummaryResponse {
   platforms: PlatformTotals[];
   /** Sum across all requested platforms. Always labeled non-attributed in the UI — see spec §3/§6. */
   blended: Omit<PlatformTotals, "platform"> & { label: "blended, non-attributed" };
+}
+
+export type TimeseriesMetric = "spend" | "impressions" | "clicks" | "conversions" | "revenue" | keyof DerivedMetrics;
+
+/** One row per date; one key per requested platform holding that day's value for `metric`. */
+export type TimeseriesPoint = { date: string } & Partial<Record<Platform, number | null>>;
+
+export interface MetricsTimeseriesResponse {
+  from: string;
+  to: string;
+  metric: TimeseriesMetric;
+  platforms: Platform[];
+  points: TimeseriesPoint[];
+}
+
+export interface CampaignRow extends DerivedMetrics {
+  campaignId: string;
+  campaignName: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+}
+
+export interface MetricsCampaignsResponse {
+  from: string;
+  to: string;
+  platform: Platform;
+  campaigns: CampaignRow[];
+}
+
+export interface PlatformSyncStatus {
+  platform: Platform;
+  /** false when the platform has no connector wired up at all (Amazon on hold) or CSV-only by design (Myntra). */
+  connected: boolean;
+  lastSync: SyncLogEntry | null;
+}
+
+export interface SyncStatusResponse {
+  platforms: PlatformSyncStatus[];
 }
