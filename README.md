@@ -81,14 +81,12 @@ curl http://localhost:4000/health/db    # ok:false until SUPABASE_* is set
 
 1. **Google Ads:** developer token approval + OAuth refresh token. Done —
    see `server/src/scripts/google-get-refresh-token.ts` (`npm run
-   google:auth --workspace server`) to regenerate if it's ever revoked.
-   Two gotchas hit during setup, worth knowing if this is redone: (a) the
-   OAuth app is unpublished/"Testing", so only accounts added as test users
-   in Cloud Console → Auth Platform → Audience can complete login — publish
-   to Production eventually, or refresh tokens expire every 7 days; (b) the
-   account is a client under a manager (MCC) account, so
-   `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (the manager's id) is required even for a
-   user with direct access to the client account.
+   google:auth --workspace server`) to regenerate if it's ever revoked. OAuth
+   app is published (Production), so no 7-day test-token expiry to worry
+   about. One gotcha worth knowing if this is ever redone: the account is a
+   client under a manager (MCC) account, so `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
+   (the manager's id) is required even for a user with direct access to the
+   client account.
 2. **Meta:** app with `ads_read`, pass App Review, generate long-lived token.
 3. **Amazon Ads:** register for the Advertising API, LWA setup, get profile ID.
 4. **Myntra:** locate the CSV export in the seller/partner panel; note the
