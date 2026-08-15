@@ -326,7 +326,29 @@ export interface ShopifyStatus {
 // ROAS answers to the same question, deliberately shown side by side, never
 // summed or blended into one number.
 
-export interface MetaSkuAdRow {
+/** The "primary parameters" every level (ad/ad-set/campaign) carries,
+ * alongside the SKU/website comparison fields below -- rolled up
+ * weighted (sum/sum), never averaged. */
+interface MetaSkuPerformance {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  cpa: number | null;
+  adsRevenue: number;
+  adsRoas: number | null;
+  /** Sum of Shopify line-item revenue for SKUs starting with `sku` (ad
+   * level) or the weighted rollup of only the matched children (ad-set/
+   * campaign level), over the same date range. Null (not 0) when nothing
+   * matched -- distinct from a real, measured ₹0. */
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface MetaSkuAdRow extends MetaSkuPerformance {
   adId: string;
   adName: string | null;
   adType: string | null;
@@ -338,37 +360,18 @@ export interface MetaSkuAdRow {
    * server/src/routes/metaSkuAttribution.ts), so this is the token as
    * extracted, not necessarily a single exact Shopify SKU. */
   sku: string | null;
-  spend: number;
-  adsRevenue: number;
-  adsRoas: number | null;
-  /** Sum of Shopify line-item revenue for SKUs starting with `sku`, over
-   * the same date range. Null (not 0) when sku is null or matches zero
-   * Shopify SKUs -- distinct from a real, measured ₹0. */
-  websiteRevenue: number | null;
-  websiteRoas: number | null;
 }
 
-export interface MetaSkuAdSetGroup {
+export interface MetaSkuAdSetGroup extends MetaSkuPerformance {
   adSetId: string;
   adSetName: string | null;
   ads: MetaSkuAdRow[];
-  spend: number;
-  adsRevenue: number;
-  adsRoas: number | null;
-  /** Weighted rollup of only the child ads that have a match -- null if none do. */
-  websiteRevenue: number | null;
-  websiteRoas: number | null;
 }
 
-export interface MetaSkuCampaignGroup {
+export interface MetaSkuCampaignGroup extends MetaSkuPerformance {
   campaignId: string;
   campaignName: string | null;
   adSets: MetaSkuAdSetGroup[];
-  spend: number;
-  adsRevenue: number;
-  adsRoas: number | null;
-  websiteRevenue: number | null;
-  websiteRoas: number | null;
 }
 
 export interface MetaSkuAttributionResponse {

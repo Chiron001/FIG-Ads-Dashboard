@@ -13,7 +13,6 @@ import { CampaignTable } from "./CampaignTable";
 import { PortfolioView } from "./PortfolioView";
 import { ProductsSection } from "./ProductsSection";
 import { AdsSection } from "./AdsSection";
-import { MetaSkuAttributionSection } from "./MetaSkuAttributionSection";
 
 interface Props {
   platform: Platform;
@@ -89,7 +88,6 @@ export function PlatformSection({
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
   const [showAds, setShowAds] = useState(false);
-  const [showSkuAttribution, setShowSkuAttribution] = useState(false);
 
   useEffect(() => {
     if (!connected) return;
@@ -358,30 +356,6 @@ export function PlatformSection({
             )}
           </div>
         </>
-      )}
-
-      {/* Meta-only: cross-references each ad's spend against Shopify's
-          ground-truth revenue for the SKU tagged in its name -- a
-          different question (self-reported Ads ROAS vs actual Website
-          ROAS for the same spend) than the grain breakdowns above, so it
-          gets its own section rather than folding into Ad Sets & Ads. */}
-      {platform === "meta" && (
-        <div className="rounded-lg border border-border bg-surface-1">
-          <button type="button" onClick={() => setShowSkuAttribution((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
-            <div>
-              <h3 className="text-sm font-semibold text-ink-primary">SKU Attribution — Ads ROAS vs Website ROAS</h3>
-              <p className="text-xs text-ink-muted">Campaign → Ad Set → Ad, cross-referenced against Shopify's actual sales for the SKU tagged in each ad's name.</p>
-            </div>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showSkuAttribution ? "rotate-180" : ""}`}>
-              <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          {showSkuAttribution && (
-            <div className="border-t border-border">
-              <MetaSkuAttributionSection range={range} refreshKey={refreshKey} />
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

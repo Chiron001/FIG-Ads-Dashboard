@@ -309,18 +309,32 @@ Build proceeds phase by phase per the project spec, committing after each.
         this is exactly the "this ad's spend vs. that product's sales"
         comparison the user asked for, not a claim that this ad caused
         that revenue.
-      - UI: `web/src/components/MetaSkuAttributionSection.tsx` — an
-        indented single-table tree (not nested `<table>`s) with
-        click-to-expand campaign/ad-set rows, a SKU pill or "no SKU tag" on
-        each ad row, an "X of Y ads have a SKU tag" coverage line, and an
-        "Only show tagged ads" filter. Gated to `platform === "meta"` only
-        in `PlatformSection.tsx`, as its own collapsible section below Ad
-        Sets & Ads.
+      - **Own page, nested in the sidebar** — not an accordion inside the
+        Meta Ads page (that was the first cut; moved per follow-up
+        request). `PlatformSidebar.tsx`'s `SidebarSelection` gained a
+        `"meta-sku-attribution"` value rendered as a small "↳ SKU
+        Attribution" link directly under the Meta Ads nav item (hidden in
+        collapsed/icon-only sidebar mode, like every other label);
+        `App.tsx` renders `MetaSkuAttributionSection` as its own top-level
+        view when selected, reusing the global date range/margin/target
+        ROAS bar exactly like every platform page.
+      - **Campaign / Ad Set / Ad level switcher** with the **full standard
+        metrics** at every level, not just the SKU comparison fields —
+        Spend, Impressions, Clicks, CTR, CVR, CPC, CPA, Orders, alongside
+        Ads Revenue/ROAS and Website Revenue/ROAS, all sortable, all
+        weighted rollups (sum/sum, never averaged) when viewing Campaign or
+        Ad Set level. Flat sortable tables per level (not the nested
+        expand-tree from the first cut) so every column has room and
+        matches the rest of the app's table conventions (`CampaignTable`,
+        `AdsSection`). "Only show tagged ads" filters to rows/groups with
+        at least one SKU match at whichever level is selected.
       - Verified live: 10 of 240 real ads already carry a SKU tag (the
-        user's naming rollout is in progress); campaign-level rollups for
-        matched ones show sane numbers (e.g. ₹7,27,896 website revenue /
-        26.90x website ROAS on one real campaign), unmatched ads correctly
-        show "no SKU tag" / "—" rather than 0, confirmed via Playwright
+        user's naming rollout is in progress) — confirmed exact at all
+        three levels, including the Ad-level "Only show tagged ads" filter
+        narrowing to exactly those 10; campaign-level rollups for matched
+        ones show sane numbers (e.g. ₹7,27,896 website revenue / 26.90x
+        website ROAS on one real campaign), unmatched rows correctly show
+        "no SKU tag" / "—" rather than 0, confirmed via Playwright
         with zero console errors.
 
 ## Structure

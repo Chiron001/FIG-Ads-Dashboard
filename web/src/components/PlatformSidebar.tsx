@@ -5,10 +5,11 @@ import { PLATFORM_COLORS } from "../lib/platformColors";
 import { PlatformIcon } from "./icons/PlatformIcon";
 import { ShopifyIcon } from "./icons/ShopifyIcon";
 
-/** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify,
- * which isn't an ad platform (no spend/campaigns) and so isn't in the
- * shared Platform union; it's a separate section entirely. */
-export type SidebarSelection = Platform | "shopify";
+/** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify
+ * (not an ad platform -- no spend/campaigns, not in the shared Platform
+ * union), plus Meta's SKU Attribution sub-view (nested under Meta Ads in
+ * the nav, not a platform of its own). */
+export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution";
 
 const SHOPIFY_COLOR = "#95BF47";
 
@@ -45,28 +46,50 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
         {ALL_PLATFORMS.map((platform) => {
           const isActive = platform === active;
           return (
-            <button
-              key={platform}
-              type="button"
-              title={collapsed ? `${PLATFORM_LABELS[platform]}${connected[platform] ? "" : " (not connected)"}` : undefined}
-              onClick={() => onChange(platform)}
-              className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
-                collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-              } ${isActive ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
-            >
-              {isActive && (
-                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] }} />
+            <div key={platform}>
+              <button
+                type="button"
+                title={collapsed ? `${PLATFORM_LABELS[platform]}${connected[platform] ? "" : " (not connected)"}` : undefined}
+                onClick={() => onChange(platform)}
+                className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
+                  collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+                } ${isActive ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
+              >
+                {isActive && (
+                  <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] }} />
+                )}
+                <span className="relative shrink-0" style={{ opacity: connected[platform] ? 1 : 0.4 }}>
+                  <PlatformIcon platform={platform} size={18} />
+                </span>
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 truncate">{PLATFORM_LABELS[platform]}</span>
+                    {!connected[platform] && <span className="shrink-0 text-[10px] text-ink-muted">not connected</span>}
+                  </>
+                )}
+              </button>
+
+              {/* Meta-only sub-view: each ad's spend cross-referenced against
+                  Shopify's SKU-level revenue -- nested under Meta Ads since
+                  it's a lens on Meta's own data, not a platform of its own.
+                  Hidden in collapsed (icon-only) mode, same as every other label. */}
+              {platform === "meta" && !collapsed && (
+                <button
+                  type="button"
+                  onClick={() => onChange("meta-sku-attribution")}
+                  className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                    active === "meta-sku-attribution"
+                      ? "bg-surface-2 text-ink-primary"
+                      : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  }`}
+                >
+                  {active === "meta-sku-attribution" && (
+                    <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.meta }} />
+                  )}
+                  <span className="truncate">↳ SKU Attribution</span>
+                </button>
               )}
-              <span className="relative shrink-0" style={{ opacity: connected[platform] ? 1 : 0.4 }}>
-                <PlatformIcon platform={platform} size={18} />
-              </span>
-              {!collapsed && (
-                <>
-                  <span className="flex-1 truncate">{PLATFORM_LABELS[platform]}</span>
-                  {!connected[platform] && <span className="shrink-0 text-[10px] text-ink-muted">not connected</span>}
-                </>
-              )}
-            </button>
+            </div>
           );
         })}
 

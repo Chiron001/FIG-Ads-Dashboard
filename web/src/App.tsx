@@ -9,6 +9,7 @@ import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
 import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
+import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import "./App.css";
 
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
@@ -74,9 +75,14 @@ function App() {
   }, [syncStatus]);
 
   const isShopify = activeSelection === "shopify";
+  const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const lastSync = isShopify
     ? (shopifyStatus?.lastSync ?? null)
-    : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
+    : isMetaSkuAttribution
+      ? // Derived entirely from Meta + Shopify's already-synced data -- no
+        // sync of its own, so "last synced" reuses Meta's.
+        (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
+      : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
 
   function handleSyncComplete() {
     setRefreshKey((k) => k + 1);
@@ -95,7 +101,9 @@ function App() {
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink-primary">{isShopify ? "Shopify" : PLATFORM_LABELS[activeSelection]}</h2>
+            <h2 className="text-sm font-semibold text-ink-primary">
+              {isShopify ? "Shopify" : isMetaSkuAttribution ? "Meta Ads — SKU Attribution" : PLATFORM_LABELS[activeSelection]}
+            </h2>
             <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-ink-secondary">
               All figures in INR
             </span>
@@ -164,6 +172,8 @@ function App() {
               onSyncComplete={handleSyncComplete}
               refreshKey={refreshKey}
             />
+          ) : isMetaSkuAttribution ? (
+            <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} />
           ) : (
             <PlatformSection
               key={activeSelection}

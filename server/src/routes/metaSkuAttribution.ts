@@ -45,22 +45,32 @@ interface FlatAd extends MetaSkuAdRow {
   adSetName: string | null;
 }
 
-/** Weighted rollup (sum/sum, never averaged) over a group of ads --
+type Rollup = Pick<
+  MetaSkuAdRow,
+  "spend" | "impressions" | "clicks" | "conversions" | "ctr" | "cvr" | "cpc" | "cpa" | "adsRevenue" | "adsRoas" | "websiteRevenue" | "websiteRoas"
+>;
+
+/** Weighted rollup (sum/sum, never averaged) over a group of ads -- ctr/cvr/
+ * cpc/cpa are recomputed from the summed inputs, not averaged per-ad.
  * websiteRevenue/websiteRoas roll up from only the ads that matched a SKU;
  * a group where none did stays null, not a misleading 0. */
-function rollUp(ads: MetaSkuAdRow[]): {
-  spend: number;
-  adsRevenue: number;
-  adsRoas: number | null;
-  websiteRevenue: number | null;
-  websiteRoas: number | null;
-} {
+function rollUp(ads: MetaSkuAdRow[]): Rollup {
   const spend = ads.reduce((s, a) => s + a.spend, 0);
+  const impressions = ads.reduce((s, a) => s + a.impressions, 0);
+  const clicks = ads.reduce((s, a) => s + a.clicks, 0);
+  const conversions = ads.reduce((s, a) => s + a.conversions, 0);
   const adsRevenue = ads.reduce((s, a) => s + a.adsRevenue, 0);
   const matched = ads.filter((a) => a.websiteRevenue != null);
   const websiteRevenue = matched.length > 0 ? matched.reduce((s, a) => s + (a.websiteRevenue ?? 0), 0) : null;
   return {
     spend,
+    impressions,
+    clicks,
+    conversions,
+    ctr: safeDivide(clicks, impressions),
+    cvr: safeDivide(conversions, clicks),
+    cpc: safeDivide(spend, clicks),
+    cpa: safeDivide(spend, conversions),
     adsRevenue,
     adsRoas: safeDivide(adsRevenue, spend),
     websiteRevenue,
@@ -83,6 +93,9 @@ metaSkuAttributionRouter.get(
            ad_group_id, max(ad_group_name) as ad_group_name,
            max(campaign_id) as campaign_id, max(campaign_name) as campaign_name,
            coalesce(sum(spend), 0)::float8 as spend,
+           coalesce(sum(impressions), 0)::float8 as impressions,
+           coalesce(sum(clicks), 0)::float8 as clicks,
+           coalesce(sum(conversions), 0)::float8 as conversions,
            coalesce(sum(revenue), 0)::float8 as ads_revenue
          from fact_ad_creative_performance
          where date between $1 and $2 and platform::text = 'meta'
@@ -126,6 +139,13 @@ metaSkuAttributionRouter.get(
         adSetName: r.ad_group_name,
         sku,
         spend: r.spend,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        conversions: r.conversions,
+        ctr: safeDivide(r.clicks, r.impressions),
+        cvr: safeDivide(r.conversions, r.clicks),
+        cpc: safeDivide(r.spend, r.clicks),
+        cpa: safeDivide(r.spend, r.conversions),
         adsRevenue: r.ads_revenue,
         adsRoas: safeDivide(r.ads_revenue, r.spend),
         websiteRevenue,
