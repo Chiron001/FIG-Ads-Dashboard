@@ -386,6 +386,10 @@ export interface ReconciliationInfo {
   tolerancePct: number;
 }
 
+/** Only Google and Meta have a connector for either grain (Amazon on hold,
+ * Myntra CSV-only, no ad/product-level breakdown at all). */
+export type GrainPlatform = "google" | "meta";
+
 export type ProductGroupBy = "sku" | "type_l1" | "type_l2";
 
 export interface ProductPerformanceRow extends DerivedMetrics {
@@ -408,7 +412,7 @@ export interface ProductPerformanceRow extends DerivedMetrics {
 export interface MetricsProductsResponse {
   from: string;
   to: string;
-  platform: "google";
+  platform: GrainPlatform;
   groupBy: ProductGroupBy;
   campaignId: string | null; // null = all campaigns
   products: ProductPerformanceRow[];
@@ -457,7 +461,7 @@ export interface AdRow extends DerivedMetrics {
 export interface MetricsAdsResponse {
   from: string;
   to: string;
-  platform: "google";
+  platform: GrainPlatform;
   campaignId: string | null;
   adGroupId: string | null;
   ads: AdRow[];

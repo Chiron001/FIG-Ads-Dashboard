@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CampaignRow, AdRow } from "@fig/shared";
+import type { CampaignRow, AdRow, GrainPlatform } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchAds } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
@@ -7,6 +7,7 @@ import { normalizeStatus } from "../lib/campaignStatus";
 import { computeMedians, verdictFor, type Verdict } from "../lib/verdict";
 
 interface Props {
+  platform: GrainPlatform;
   range: DateRange;
   grossMargin: number;
   targetRoas: number;
@@ -46,22 +47,26 @@ function adLabel(row: AdRow): string {
   return `${row.adType ?? "Ad"} #${row.adId}`;
 }
 
-export function GoogleAdsSection({ range, grossMargin, targetRoas, campaigns, refreshKey }: Props) {
+export function AdsSection({ platform, range, grossMargin, targetRoas, campaigns, refreshKey }: Props) {
   const [campaignId, setCampaignId] = useState("");
   const [data, setData] = useState<{ ads: AdRow[]; reconciliation: import("@fig/shared").ReconciliationInfo } | null>(null);
   const [loading, setLoading] = useState(false);
   const [hideZeroSpend, setHideZeroSpend] = useState(true);
 
+  // Switching platform (tab change) shouldn't carry over a campaign filter
+  // from a different platform's ID space.
+  useEffect(() => setCampaignId(""), [platform]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchAds(range.from, range.to, campaignId || null)
+    fetchAds(platform, range.from, range.to, campaignId || null)
       .then((res) => !cancelled && setData(res))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to, campaignId, refreshKey]);
+  }, [platform, range.from, range.to, campaignId, refreshKey]);
 
   const breakEvenRoas = grossMargin > 0 ? 1 / grossMargin : null;
 
@@ -102,7 +107,12 @@ export function GoogleAdsSection({ range, grossMargin, targetRoas, campaigns, re
             ))}
           </select>
           <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
-            <input type="checkbox" checked={hideZeroSpend} onChange={(e) => setHideZeroSpend(e.target.checked)} className="accent-platform-google" />
+            <input
+              type="checkbox"
+              checked={hideZeroSpend}
+              onChange={(e) => setHideZeroSpend(e.target.checked)}
+              className={platform === "google" ? "accent-platform-google" : "accent-platform-meta"}
+            />
             Hide zero-spend
           </label>
         </div>
@@ -112,8 +122,8 @@ export function GoogleAdsSection({ range, grossMargin, targetRoas, campaigns, re
         <div className="mx-4 mt-3 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
           <span className="font-medium text-status-warning">⚠ Reconciliation gap:</span> this breakdown covers{" "}
           {formatCurrency(data.reconciliation.grainSpend)} of {formatCurrency(data.reconciliation.campaignSpend)} campaign spend (
-          {formatPercent(data.reconciliation.deviationPct, 1)} off) -- Shopping/PMax campaigns have no ad-level rows here; see the Products
-          section for those.
+          {formatPercent(data.reconciliation.deviationPct, 1)} off)
+          {platform === "google" ? " -- Shopping/PMax campaigns have no ad-level rows here; see the Products section for those." : "."}
         </div>
       )}
       {data && data.reconciliation.withinTolerance && data.reconciliation.deviationPct != null && (
@@ -135,7 +145,9 @@ export function GoogleAdsSection({ range, grossMargin, targetRoas, campaigns, re
                 <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Ad</th>
                 <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Type</th>
                 <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Status</th>
-                <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Ad Group</th>
+                <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">
+                  {platform === "google" ? "Ad Group" : "Ad Set"}
+                </th>
                 <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Verdict</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Spend</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% Spend</th>

@@ -121,7 +121,7 @@ Build proceeds phase by phase per the project spec, committing after each.
       - Verified live against real Google Ads data (curl on every new
         endpoint + Playwright screenshots of every new UI surface) before
         commit.
-- [x] **Google Ads: Product-Level & Ad-Level Spend.** Two new grains, each a
+- [x] **Product-Level & Ad-Level Spend (Google + Meta).** Two new grains, each a
       different breakdown of the SAME campaign spend `fact_ad_performance`
       already holds -- never summed with campaign or with each other (the
       "Critical modeling rule" the build spec leads with):
@@ -138,7 +138,7 @@ Build proceeds phase by phase per the project spec, committing after each.
         numeric-protobuf-enum resolution as `campaign.status` (verified live:
         raw codes, not strings, exactly like the existing campaign-status
         gotcha).
-      - `server/src/etl/googleGrains.ts` — upserts for both tables, wired
+      - `server/src/etl/productAdGrains.ts` — upserts for both tables, wired
         into `runSync("google", …)` so both grains refresh on the same
         schedule as the campaign sync, each independently try/caught so one
         grain's failure never blocks the other or the main sync.
@@ -160,22 +160,60 @@ Build proceeds phase by phase per the project spec, committing after each.
         loosened from `CampaignRow` to a `Pick<...>` subset so the exact
         same Scale/Maintain/Cut/etc rules apply at ad grain too (spec §2d),
         no logic duplicated.
-      - UI: two new collapsible subsections under Google Ads (matching the
-        Portfolio section's pattern), **Products** and **Ad Groups & Ads**
-        (`web/src/components/GoogleProductsSection.tsx`,
-        `GoogleAdsSection.tsx`) — each with its own campaign filter,
-        independent of the campaign table above. Products defaults to the
-        category roll-up (toggle to sub-category or individual SKU), carries
-        the mandatory clicked-vs-purchased attribution caveat banner, a
-        reconciliation note, and a Pareto headline + collapsible spend-leak
-        list. Ads shows per-ad Verdict pills, sorted by spend desc,
-        zero-spend hidden by default. Never a combined table mixing grains.
+      - UI: two new collapsible subsections (matching the Portfolio
+        section's pattern), **Products** and **Ad Groups & Ads**
+        (`web/src/components/ProductsSection.tsx`, `AdsSection.tsx`) — each
+        with its own campaign filter, independent of the campaign table
+        above. Products defaults to the category roll-up (toggle to
+        sub-category or individual SKU), carries the mandatory
+        clicked-vs-purchased attribution caveat banner, a reconciliation
+        note, and a Pareto headline + collapsible spend-leak list. Ads shows
+        per-ad Verdict pills, sorted by spend desc, zero-spend hidden by
+        default. Never a combined table mixing grains.
       - Verified live end-to-end: manual `/sync/google` populated both new
         tables from the real account (1,000 product rows / 55 SKUs, 184 ad
         rows / 4 ads), all three endpoints curl-verified, and every new UI
         surface confirmed via Playwright screenshots (category roll-up, SKU
         drill-down, Pareto + spend-leak list, ad table with verdicts and a
         nearly-exact reconciliation) with zero console errors.
+      - **Extended to Meta Ads** (`db/migrations/0006_generalize_product_ad_grain.sql`
+        drops the `platform` column's Google-only default; both tables were
+        already multi-platform-shaped). `MetaAdsConnector` gains the same
+        four methods: `fetchAdPerformance`/`normalizeAdPerformance` (Insights
+        `level=ad`, no breakdown — ad status/type aren't valid Insights
+        fields, confirmed live, so they're joined in-memory from a separate
+        `/ads?fields=...,effective_status,creative{object_type}` roster call,
+        same pattern as `fetchCampaignRoster`) and
+        `fetchProductPerformance`/`normalizeProductPerformance` (Insights
+        `breakdowns=product_id` — Meta's catalog/pixel product matching,
+        confirmed live to return real rows even on non-DPA "UGC" campaigns).
+        Meta's product breakdown has no category dimension, so the shared
+        `ProductsSection` only offers SKU grouping (no roll-up) when
+        `platform="meta"`. Shared plumbing: `server/src/etl/grainTypes.ts`
+        (connector-agnostic `ProductPerformanceInput`/`AdPerformanceInput`,
+        kept import-cycle-free from `../connectors/*`),
+        `productAdGrains.ts`'s upsert functions now take an explicit
+        `platform` param instead of hardcoding `"google"`, and
+        `/metrics/products`, `/metrics/products/pareto`, `/metrics/ads` all
+        take a `?platform=google|meta` query param (default `google` for
+        back-compat). Two real bugs found and fixed against live Meta data:
+        (1) `metaGet`'s retry loop only handled parsed API error bodies, not
+        network-level exceptions — a real `ECONNRESET` on a
+        product-breakdown chunk went unretried and failed the whole grain;
+        fixed by wrapping `fetch()` itself in the same retry/backoff. (2)
+        Meta's product_id breakdown is queried at `level=ad`, so the same
+        product shown via two different ads in one campaign/day produces two
+        raw rows sharing the same `(campaign, product, date)` upsert key —
+        Postgres's `ON CONFLICT DO UPDATE` errors ("cannot affect row a
+        second time") if that lands in one `INSERT` batch; fixed with a
+        `collapseProductDuplicates` pre-aggregation step (summed, not
+        dropped), covered by 5 new tests including the exact live scenario.
+        Verified live end-to-end: `/sync/meta` populated both new tables
+        (2,899 product rows / 405 SKUs, 512 ad rows), ads reconcile to
+        ~0.07% of campaign spend (near-exact), products cover ~44% (the rest
+        has no catalog/pixel match, surfaced honestly in the same banner as
+        Google's), and both sections confirmed via Playwright against the
+        live Meta Ads tab with zero console errors.
 
 ## Structure
 

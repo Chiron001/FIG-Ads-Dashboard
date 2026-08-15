@@ -1,6 +1,7 @@
 import { GoogleAdsApi, enums, type Customer } from "google-ads-api";
 import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, RawRow } from "@fig/shared";
 import { env } from "../config/env";
+import type { ProductPerformanceInput, AdPerformanceInput } from "../etl/grainTypes";
 
 // GAQL returns campaign.status as the protobuf enum's numeric code (e.g.
 // ENABLED=2, PAUSED=3), not its string name -- confirmed by querying the
@@ -118,25 +119,6 @@ const PRODUCT_PERFORMANCE_QUERY = (from: string, to: string) => `
   WHERE segments.date BETWEEN '${from}' AND '${to}'
 `;
 
-export interface GoogleProductPerformanceInput {
-  campaignId: string;
-  campaignName: string | null;
-  productItemId: string;
-  productTitle: string | null;
-  productBrand: string | null;
-  productTypeL1: string | null;
-  productTypeL2: string | null;
-  productTypeL3: string | null;
-  productChannel: string | null;
-  date: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
-  revenue: number;
-  raw: Record<string, unknown>;
-}
-
 // --- ad-level grain ----------------------------------------------------------
 //
 // ad_group_ad. Search/Display/Video ad types report here; Shopping/PMax
@@ -161,24 +143,6 @@ const AD_PERFORMANCE_QUERY = (from: string, to: string) => `
   FROM ad_group_ad
   WHERE segments.date BETWEEN '${from}' AND '${to}'
 `;
-
-export interface GoogleAdPerformanceInput {
-  campaignId: string;
-  campaignName: string | null;
-  adGroupId: string;
-  adGroupName: string | null;
-  adId: string;
-  adName: string | null;
-  adType: string | null;
-  adStatus: string | null;
-  date: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
-  revenue: number;
-  raw: Record<string, unknown>;
-}
 
 export class GoogleAdsConnector implements AdsConnector {
   platform = "google" as const;
@@ -341,7 +305,7 @@ export class GoogleAdsConnector implements AdsConnector {
     return rows as unknown as RawRow[];
   }
 
-  normalizeProductPerformance(rows: RawRow[]): GoogleProductPerformanceInput[] {
+  normalizeProductPerformance(rows: RawRow[]): ProductPerformanceInput[] {
     return rows.map((r) => {
       const row = r as unknown as {
         segments: {
@@ -397,7 +361,7 @@ export class GoogleAdsConnector implements AdsConnector {
     return rows as unknown as RawRow[];
   }
 
-  normalizeAdPerformance(rows: RawRow[]): GoogleAdPerformanceInput[] {
+  normalizeAdPerformance(rows: RawRow[]): AdPerformanceInput[] {
     return rows.map((r) => {
       const row = r as unknown as {
         ad_group_ad: {

@@ -1,7 +1,7 @@
 import { getPool } from "../db/pool";
 import { GoogleAdsConnector } from "../connectors/google";
 import { MetaAdsConnector } from "../connectors/meta";
-import { runGoogleGrainSync } from "./googleGrains";
+import { runGoogleGrainSync, runMetaGrainSync } from "./productAdGrains";
 import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, Platform } from "@fig/shared";
 
 // Amazon/Myntra intentionally omitted -- on hold (Phase 4c/4d), see README.
@@ -174,14 +174,23 @@ export async function runSync(platform: Platform, from: string, to: string): Pro
       console.warn(`[sync] ${platform} campaign roster refresh failed (fact data still wrote fine):`, rosterErr);
     }
 
-    // Product-level (Shopping/PMax) and ad-level grain -- Google only, on
-    // the same authenticated connector, same schedule as the campaign-grain
-    // sync above. Independently try/caught inside runGoogleGrainSync so
-    // neither grain's failure affects the other or this main sync result.
+    // Product-level and ad-level grain -- Google and Meta, on the same
+    // authenticated connector, same schedule as the campaign-grain sync
+    // above. Independently try/caught inside run*GrainSync so neither
+    // grain's failure affects the other or this main sync result.
     if (platform === "google" && connector instanceof GoogleAdsConnector) {
       const grainResult = await runGoogleGrainSync(connector, from, to);
       console.log(
         `[sync] google product grain: ${grainResult.products.status} (${grainResult.products.rows} rows)` +
+          (grainResult.products.error ? ` -- ${grainResult.products.error}` : "") +
+          `; ad grain: ${grainResult.ads.status} (${grainResult.ads.rows} rows)` +
+          (grainResult.ads.error ? ` -- ${grainResult.ads.error}` : "")
+      );
+    }
+    if (platform === "meta" && connector instanceof MetaAdsConnector) {
+      const grainResult = await runMetaGrainSync(connector, from, to);
+      console.log(
+        `[sync] meta product grain: ${grainResult.products.status} (${grainResult.products.rows} rows)` +
           (grainResult.products.error ? ` -- ${grainResult.products.error}` : "") +
           `; ad grain: ${grainResult.ads.status} (${grainResult.ads.rows} rows)` +
           (grainResult.ads.error ? ` -- ${grainResult.ads.error}` : "")

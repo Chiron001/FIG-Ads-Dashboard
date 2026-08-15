@@ -10,3 +10,6 @@ web/.vite/
 coverage/
 
 .vercel
+
+# Claude Code local tooling state -- not project content
+.claude/

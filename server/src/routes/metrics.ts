@@ -22,6 +22,7 @@ import type {
   MetricsProductsParetoResponse,
   AdRow,
   MetricsAdsResponse,
+  GrainPlatform,
 } from "@fig/shared";
 
 // Products/Ads reconciliation tolerances (spec §0/§6): product-grain spend
@@ -287,31 +288,42 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   res.json(response);
 }));
 
-// --- Google Ads: product-level (Shopping/PMax) and ad-level grain ----------
+// --- Product-level and ad-level grain (Google + Meta) -----------------------
 //
 // Two separate breakdowns of the SAME campaign spend fact_ad_performance
 // already holds -- never summed with campaign or ad-grain totals. See
-// db/migrations/0005_google_product_ad_grain.sql and the build spec's
-// "Critical modeling rule" (§0).
+// db/migrations/0005_google_product_ad_grain.sql,
+// db/migrations/0006_generalize_product_ad_grain.sql, and the build spec's
+// "Critical modeling rule" (§0). Amazon/Myntra have no connector for either
+// grain (Amazon on hold, Myntra CSV-only) -- these routes 400 for anything
+// other than google/meta.
+
+function parseGrainPlatform(raw: unknown): GrainPlatform | null {
+  if (raw === "google" || raw === "meta") return raw;
+  if (raw == null || raw === "") return "google"; // back-compat default, pre-dates the ?platform= param
+  return null;
+}
 
 /** Campaign-grain spend for the same filter, to reconcile a breakdown
- * grain against. Google-only (both new tables are Google-only for now). */
-async function campaignSpendForReconciliation(from: string, to: string, campaignId: string | null): Promise<number> {
+ * grain against. */
+async function campaignSpendForReconciliation(platform: GrainPlatform, from: string, to: string, campaignId: string | null): Promise<number> {
   const pool = getPool();
   const { rows } = await pool.query(
     `select coalesce(sum(spend), 0)::float8 as spend
      from fact_ad_performance
-     where date between $1 and $2 and platform::text = 'google'
-       ${campaignId ? "and campaign_id = $3" : ""}`,
-    campaignId ? [from, to, campaignId] : [from, to]
+     where date between $1 and $2 and platform::text = $3
+       ${campaignId ? "and campaign_id = $4" : ""}`,
+    campaignId ? [from, to, platform, campaignId] : [from, to, platform]
   );
   return rows[0]?.spend ?? 0;
 }
 
-// GET /metrics/products?from&to&campaign_id?&group_by=sku|type_l1|type_l2
+// GET /metrics/products?from&to&platform=google|meta&campaign_id?&group_by=sku|type_l1|type_l2
 metricsRouter.get("/products", asyncHandler(async (req, res) => {
   const range = parseDateRange(req.query as Record<string, unknown>);
   if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+  const platform = parseGrainPlatform(req.query.platform);
+  if (!platform) return res.status(400).json({ error: "platform must be one of: google, meta" });
 
   const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
   const groupByRaw = typeof req.query.group_by === "string" ? req.query.group_by : "type_l1";
@@ -321,12 +333,15 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
   const groupBy = groupByRaw as ProductGroupBy;
 
   const pool = getPool();
-  const params: unknown[] = [range.from, range.to];
+  const params: unknown[] = [range.from, range.to, platform];
   const campaignFilter = campaignId ? (params.push(campaignId), `and campaign_id = $${params.length}`) : "";
 
   // Nulls in product_type_l1/l2 must not break grouping -- coalesce to a
   // literal "—" group key so ungrouped/uncategorized spend still rolls up
   // into one visible row instead of silently vanishing or fragmenting.
+  // (Meta rows are always null here -- its product_id breakdown has no
+  // category dimension -- so type_l1/l2 grouping folds all Meta products
+  // into a single "—" row; the UI defaults Meta to SKU grouping instead.)
   const groupExpr =
     groupBy === "sku"
       ? "product_item_id"
@@ -347,7 +362,7 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
        coalesce(sum(conversions), 0)::float8 as conversions,
        coalesce(sum(revenue), 0)::float8 as revenue
      from fact_shopping_product_performance
-     where date between $1 and $2 and platform::text = 'google' ${campaignFilter}
+     where date between $1 and $2 and platform::text = $3 ${campaignFilter}
      group by ${groupExpr}
      order by spend desc`,
     params
@@ -369,12 +384,12 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
   }));
 
   const grainSpend = products.reduce((s, p) => s + p.spend, 0);
-  const campaignSpend = await campaignSpendForReconciliation(range.from, range.to, campaignId);
+  const campaignSpend = await campaignSpendForReconciliation(platform, range.from, range.to, campaignId);
 
   const response: MetricsProductsResponse = {
     from: range.from,
     to: range.to,
-    platform: "google",
+    platform,
     groupBy,
     campaignId,
     products,
@@ -383,15 +398,17 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
   res.json(response);
 }));
 
-// GET /metrics/products/pareto?from&to&campaign_id?
+// GET /metrics/products/pareto?from&to&platform=google|meta&campaign_id?
 // SKU-level cumulative-revenue Pareto + tail-leak flags (spend>0, orders=0).
 metricsRouter.get("/products/pareto", asyncHandler(async (req, res) => {
   const range = parseDateRange(req.query as Record<string, unknown>);
   if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+  const platform = parseGrainPlatform(req.query.platform);
+  if (!platform) return res.status(400).json({ error: "platform must be one of: google, meta" });
   const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
 
   const pool = getPool();
-  const params: unknown[] = [range.from, range.to];
+  const params: unknown[] = [range.from, range.to, platform];
   const campaignFilter = campaignId ? (params.push(campaignId), `and campaign_id = $${params.length}`) : "";
 
   const { rows } = await pool.query(
@@ -400,7 +417,7 @@ metricsRouter.get("/products/pareto", asyncHandler(async (req, res) => {
             coalesce(sum(conversions), 0)::float8 as conversions,
             coalesce(sum(revenue), 0)::float8 as revenue
      from fact_shopping_product_performance
-     where date between $1 and $2 and platform::text = 'google' ${campaignFilter}
+     where date between $1 and $2 and platform::text = $3 ${campaignFilter}
      group by product_item_id`,
     params
   );
@@ -429,15 +446,17 @@ metricsRouter.get("/products/pareto", asyncHandler(async (req, res) => {
   res.json(response);
 }));
 
-// GET /metrics/ads?from&to&campaign_id?&ad_group_id?
+// GET /metrics/ads?from&to&platform=google|meta&campaign_id?&ad_group_id?
 metricsRouter.get("/ads", asyncHandler(async (req, res) => {
   const range = parseDateRange(req.query as Record<string, unknown>);
   if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+  const platform = parseGrainPlatform(req.query.platform);
+  if (!platform) return res.status(400).json({ error: "platform must be one of: google, meta" });
   const campaignId = typeof req.query.campaign_id === "string" ? req.query.campaign_id : null;
   const adGroupId = typeof req.query.ad_group_id === "string" ? req.query.ad_group_id : null;
 
   const pool = getPool();
-  const params: unknown[] = [range.from, range.to];
+  const params: unknown[] = [range.from, range.to, platform];
   let filters = "";
   if (campaignId) {
     params.push(campaignId);
@@ -459,7 +478,7 @@ metricsRouter.get("/ads", asyncHandler(async (req, res) => {
        coalesce(sum(conversions), 0)::float8 as conversions,
        coalesce(sum(revenue), 0)::float8 as revenue
      from fact_ad_creative_performance
-     where date between $1 and $2 and platform::text = 'google' ${filters}
+     where date between $1 and $2 and platform::text = $3 ${filters}
      group by ad_id, ad_group_id
      order by spend desc`,
     params
@@ -483,12 +502,12 @@ metricsRouter.get("/ads", asyncHandler(async (req, res) => {
   }));
 
   const grainSpend = ads.reduce((s, a) => s + a.spend, 0);
-  const campaignSpend = await campaignSpendForReconciliation(range.from, range.to, campaignId);
+  const campaignSpend = await campaignSpendForReconciliation(platform, range.from, range.to, campaignId);
 
   const response: MetricsAdsResponse = {
     from: range.from,
     to: range.to,
-    platform: "google",
+    platform,
     campaignId,
     adGroupId,
     ads,

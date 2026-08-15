@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CampaignRow, ProductGroupBy, MetricsProductsResponse, MetricsProductsParetoResponse } from "@fig/shared";
+import type { CampaignRow, ProductGroupBy, GrainPlatform, MetricsProductsResponse, MetricsProductsParetoResponse } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchProducts, fetchProductsPareto } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 
 interface Props {
+  platform: GrainPlatform;
   range: DateRange;
   grossMargin: number;
   campaigns: CampaignRow[];
@@ -32,11 +33,16 @@ interface EnrichedProductRow {
   pctOfRevenue: number | null;
 }
 
-const GROUP_BY_OPTIONS: { value: ProductGroupBy; label: string }[] = [
+const GOOGLE_GROUP_BY_OPTIONS: { value: ProductGroupBy; label: string }[] = [
   { value: "type_l1", label: "Category" },
   { value: "type_l2", label: "Sub-category" },
   { value: "sku", label: "SKU" },
 ];
+
+// Meta's product_id breakdown has no category dimension (see
+// server/src/etl/grainTypes.ts) -- category/sub-category grouping would
+// just fold every product into one "—" row, so Meta only offers SKU.
+const META_GROUP_BY_OPTIONS: { value: ProductGroupBy; label: string }[] = [{ value: "sku", label: "SKU" }];
 
 function signClass(value: number): string {
   if (value > 0) return "text-status-good";
@@ -50,20 +56,31 @@ function productLabel(row: MetricsProductsResponse["products"][number]): string 
   return row.productTypeL1 ?? row.key ?? "—";
 }
 
-export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKey }: Props) {
-  const [groupBy, setGroupBy] = useState<ProductGroupBy>("type_l1"); // spec §1f: default to the L1 roll-up
+export function ProductsSection({ platform, range, grossMargin, campaigns, refreshKey }: Props) {
+  const groupByOptions = platform === "google" ? GOOGLE_GROUP_BY_OPTIONS : META_GROUP_BY_OPTIONS;
+  // spec §1f: default to the L1 roll-up -- only meaningful on Google, so
+  // Meta defaults straight to SKU (its only option).
+  const [groupBy, setGroupBy] = useState<ProductGroupBy>(platform === "google" ? "type_l1" : "sku");
   const [campaignId, setCampaignId] = useState<string>("");
   const [data, setData] = useState<MetricsProductsResponse | null>(null);
   const [pareto, setPareto] = useState<MetricsProductsParetoResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [showTailLeaks, setShowTailLeaks] = useState(false);
 
+  // Switching platform (tab change) resets to that platform's default
+  // grouping -- a stale "type_l1" carried over from Google would silently
+  // collapse every Meta product into one "—" row.
+  useEffect(() => {
+    setGroupBy(platform === "google" ? "type_l1" : "sku");
+    setCampaignId("");
+  }, [platform]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      fetchProducts(range.from, range.to, groupBy, campaignId || null),
-      fetchProductsPareto(range.from, range.to, campaignId || null),
+      fetchProducts(platform, range.from, range.to, groupBy, campaignId || null),
+      fetchProductsPareto(platform, range.from, range.to, campaignId || null),
     ])
       .then(([productsRes, paretoRes]) => {
         if (cancelled) return;
@@ -74,7 +91,7 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to, groupBy, campaignId, refreshKey]);
+  }, [platform, range.from, range.to, groupBy, campaignId, refreshKey]);
 
   const enriched = useMemo((): EnrichedProductRow[] => {
     if (!data) return [];
@@ -104,7 +121,7 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
       .sort((a, b) => b.spend - a.spend);
   }, [data, grossMargin]);
 
-  const shoppingCampaigns = campaigns; // caller already scopes this to the current platform (google)
+  const platformCampaigns = campaigns; // caller already scopes this to the current platform
 
   return (
     <div>
@@ -116,14 +133,14 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
             className="rounded-md border border-border bg-surface-0 px-2 py-1.5 text-xs text-ink-secondary"
           >
             <option value="">All campaigns</option>
-            {shoppingCampaigns.map((c) => (
+            {platformCampaigns.map((c) => (
               <option key={c.campaignId} value={c.campaignId}>
                 {c.campaignName ?? c.campaignId}
               </option>
             ))}
           </select>
           <div className="flex rounded-md border border-border p-0.5 text-xs">
-            {GROUP_BY_OPTIONS.map((opt) => (
+            {groupByOptions.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
@@ -142,9 +159,10 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
       {/* Mandatory attribution caveat -- spec §1d, not optional. */}
       <div className="mx-4 mt-3 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
         <span className="font-medium text-status-warning">Directional, not exact: </span>
-        Revenue/orders here are attributed to the <em>clicked</em> product, not necessarily the one purchased -- a shopper who clicks a
-        table lamp ad and buys a floor lamp is credited to the table lamp. Spend, impressions, and clicks are exact; ROAS per product is
-        directional.
+        {platform === "google"
+          ? "Revenue/orders here are attributed to the clicked product, not necessarily the one purchased -- a shopper who clicks a table lamp ad and buys a floor lamp is credited to the table lamp."
+          : "Revenue/orders here are attributed to the product shown in the clicked/viewed ad (via catalog/pixel matching), not necessarily the one purchased."}{" "}
+        Spend, impressions, and clicks are exact; ROAS per product is directional.
       </div>
 
       {data && (
@@ -160,8 +178,8 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
             <>
               <span className="text-status-warning">⚠ Partial coverage:</span> this breakdown covers{" "}
               {formatCurrency(data.reconciliation.grainSpend)} of {formatCurrency(data.reconciliation.campaignSpend)} campaign spend (
-              {formatPercent(1 - data.reconciliation.deviationPct, 0)} attributed) -- the rest is Search/Display spend with no product-level
-              breakdown, or Shopping spend Google didn't tie to an item.
+              {formatPercent(1 - data.reconciliation.deviationPct, 0)} attributed) -- the rest has no product-level breakdown
+              {platform === "google" ? " (Search/Display spend, or Shopping spend Google didn't tie to an item)" : " (no catalog/pixel product match)"}.
             </>
           )}
         </div>
@@ -171,7 +189,7 @@ export function GoogleProductsSection({ range, grossMargin, campaigns, refreshKe
         <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface-0 px-3 py-2 text-xs">
           <span className="text-ink-secondary">
             <span className="font-semibold text-ink-primary">{pareto.skusToEightyPercent}</span> of {pareto.totalSkus} SKUs drive 80% of
-            Shopping revenue.
+            product-attributed revenue.
           </span>
           {pareto.tailLeaks.length > 0 && (
             <button type="button" onClick={() => setShowTailLeaks((v) => !v)} className="text-status-warning hover:underline">

@@ -1,5 +1,6 @@
 import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, RawRow } from "@fig/shared";
 import { env } from "../config/env";
+import type { ProductPerformanceInput, AdPerformanceInput } from "../etl/grainTypes";
 
 // Marketing API Insights edge, adset-level daily rows. Field mapping per
 // spec §3: spend -> spend, actions[purchase] -> conversions,
@@ -26,6 +27,47 @@ const INSIGHTS_FIELDS = [
   "action_values",
   "date_start",
 ].join(",");
+
+// --- ad-level grain ----------------------------------------------------------
+//
+// level=ad, no breakdown -- effectively every Meta campaign has ad-level
+// rows (unlike Google, where Shopping/PMax has no ad_group_ad rows). Ad
+// status/type aren't valid Insights fields (confirmed live: "(#100)
+// effective_status is not valid for fields param") -- fetched separately
+// via the /ads edge and joined in-memory by ad_id, same pattern as
+// fetchCampaignRoster.
+const AD_INSIGHTS_FIELDS = [
+  "campaign_id",
+  "campaign_name",
+  "adset_id",
+  "adset_name",
+  "ad_id",
+  "ad_name",
+  "spend",
+  "impressions",
+  "clicks",
+  "actions",
+  "action_values",
+  "date_start",
+].join(",");
+
+// --- product-level grain -----------------------------------------------------
+//
+// Insights breakdowns=product_id -- Meta's catalog/pixel product matching,
+// not Shopping-specific despite the shared table name. Confirmed live this
+// account gets real product_id rows even on non-DPA ("UGC") campaigns, via
+// pixel-side product matching against the connected catalog. No category
+// breakdown is exposed this way (would need a separate Product Catalog API
+// call to enrich by product_id -- not built, see grainTypes.ts).
+//
+// Confirmed live: combining this breakdown with time_increment=1 over a
+// long date range intermittently fails with a generic "Service temporarily
+// unavailable" (code 2) -- short (<=7 day) chunks are reliable, longer
+// single requests are not. fetchProductPerformance chunks internally.
+const PRODUCT_INSIGHTS_FIELDS = ["campaign_id", "campaign_name", "ad_id", "ad_name", "spend", "impressions", "clicks", "actions", "action_values"].join(
+  ","
+);
+const PRODUCT_BREAKDOWN_CHUNK_DAYS = 7;
 
 interface MetaActionValue {
   action_type: string;
@@ -60,6 +102,44 @@ interface MetaCampaignRosterRow {
   effective_status?: string;
 }
 
+interface MetaAdInsightRow {
+  campaign_id: string;
+  campaign_name?: string;
+  adset_id: string;
+  adset_name?: string;
+  ad_id: string;
+  ad_name?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  actions?: MetaActionValue[];
+  action_values?: MetaActionValue[];
+  date_start: string;
+}
+
+interface MetaAdRosterRow {
+  id: string;
+  name?: string;
+  effective_status?: string;
+  creative?: { object_type?: string };
+}
+
+interface MetaProductInsightRow {
+  campaign_id: string;
+  campaign_name?: string;
+  ad_id: string;
+  ad_name?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  actions?: MetaActionValue[];
+  action_values?: MetaActionValue[];
+  date_start: string;
+  // Meta returns this breakdown dimension as "<catalog_product_id>, <title>"
+  // in one string -- confirmed live, no separate title field.
+  product_id?: string;
+}
+
 interface MetaApiResponse<T> {
   data: T[];
   paging?: { next?: string };
@@ -67,23 +147,71 @@ interface MetaApiResponse<T> {
 }
 
 const RATE_LIMIT_ERROR_CODES = new Set([17, 613]); // spec §4b: back off on these specifically
+// Generic "Service temporarily unavailable" -- confirmed live on the
+// product_id breakdown query (Meta's own docs: transient, retry). Distinct
+// from RATE_LIMIT_ERROR_CODES (spec §4b names those specifically), but
+// retried the same way.
+const TRANSIENT_ERROR_CODES = new Set([2]);
 const MAX_RETRIES = 5;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Splits [from, to] into <=chunkDays-day inclusive windows -- see
+ * PRODUCT_BREAKDOWN_CHUNK_DAYS's comment for why fetchProductPerformance
+ * needs this and fetchAdPerformance/fetchRaw don't. */
+function chunkDateRange(from: string, to: string, chunkDays: number): { from: string; to: string }[] {
+  const chunks: { from: string; to: string }[] = [];
+  let cursor = new Date(from + "T00:00:00Z");
+  const end = new Date(to + "T00:00:00Z");
+  while (cursor <= end) {
+    const chunkEnd = new Date(Math.min(cursor.getTime() + (chunkDays - 1) * 86400000, end.getTime()));
+    chunks.push({ from: cursor.toISOString().slice(0, 10), to: chunkEnd.toISOString().slice(0, 10) });
+    cursor = new Date(chunkEnd.getTime() + 86400000);
+  }
+  return chunks;
+}
+
+/** Meta's product_id breakdown value is "<id>, <title>" in one string
+ * (confirmed live) -- split on the first comma; title may itself contain
+ * commas, so this can't just split(",") and take [0]/[1]. */
+function parseProductIdField(raw: string | undefined): { id: string; title: string | null } {
+  if (!raw) return { id: "unknown", title: null };
+  const commaIdx = raw.indexOf(",");
+  if (commaIdx === -1) return { id: raw.trim(), title: null };
+  return { id: raw.slice(0, commaIdx).trim(), title: raw.slice(commaIdx + 1).trim() || null };
+}
+
 async function metaGet<T>(url: string): Promise<MetaApiResponse<T>> {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(url);
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch (err) {
+      // Network-level failure (ECONNRESET etc, confirmed live on a
+      // product-breakdown chunk request) -- fetch() throws before there's
+      // any response to inspect, so this can't be caught by the
+      // body.error/429 branch below. Retry it the same way as a rate
+      // limit: transient, not a real API error.
+      if (attempt < MAX_RETRIES) {
+        const backoffMs = 2 ** attempt * 1000;
+        console.warn(
+          `[meta connector] network error (${(err as Error).message}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+        );
+        await sleep(backoffMs);
+        continue;
+      }
+      throw err;
+    }
     const body = (await res.json()) as MetaApiResponse<T>;
 
     if (body.error) {
-      const isRateLimit = RATE_LIMIT_ERROR_CODES.has(body.error.code) || res.status === 429;
-      if (isRateLimit && attempt < MAX_RETRIES) {
+      const isRetryable = RATE_LIMIT_ERROR_CODES.has(body.error.code) || TRANSIENT_ERROR_CODES.has(body.error.code) || res.status === 429;
+      if (isRetryable && attempt < MAX_RETRIES) {
         const backoffMs = 2 ** attempt * 1000;
         console.warn(
-          `[meta connector] rate limited (code ${body.error.code}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
+          `[meta connector] retryable error (code ${body.error.code}: ${body.error.message}), retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`
         );
         await sleep(backoffMs);
         continue;
@@ -220,5 +348,133 @@ export class MetaAdsConnector implements AdsConnector {
       searchBudgetLostImpressionShare: null,
       raw: row as unknown as Record<string, unknown>,
     }));
+  }
+
+  // --- ad-level grain --------------------------------------------------------
+
+  private async fetchAdRoster(): Promise<Map<string, MetaAdRosterRow>> {
+    let url =
+      `${GRAPH_BASE}/${this.adAccountId}/ads` +
+      `?fields=id,name,effective_status,creative{object_type}` +
+      `&limit=200` +
+      `&access_token=${this.accessToken}`;
+
+    const byId = new Map<string, MetaAdRosterRow>();
+    while (url) {
+      const page = await metaGet<MetaAdRosterRow>(url);
+      for (const r of page.data) byId.set(r.id, r);
+      url = page.paging?.next ?? "";
+    }
+    return byId;
+  }
+
+  async fetchAdPerformance(from: string, to: string): Promise<RawRow[]> {
+    if (!this.accessToken || !this.adAccountId) {
+      throw new Error("Meta Ads connector: call authenticate() before fetchAdPerformance().");
+    }
+
+    const roster = await this.fetchAdRoster();
+    const timeRange = encodeURIComponent(JSON.stringify({ since: from, until: to }));
+    let url =
+      `${GRAPH_BASE}/${this.adAccountId}/insights` +
+      `?level=ad` +
+      `&fields=${AD_INSIGHTS_FIELDS}` +
+      `&time_increment=1` +
+      `&time_range=${timeRange}` +
+      `&action_attribution_windows=${ATTRIBUTION_WINDOW_PARAM}` +
+      `&limit=200` +
+      `&access_token=${this.accessToken}`;
+
+    const rows: (MetaAdInsightRow & { _status?: string; _type?: string })[] = [];
+    while (url) {
+      const page = await metaGet<MetaAdInsightRow>(url);
+      for (const r of page.data) {
+        const rosterEntry = roster.get(r.ad_id);
+        rows.push({ ...r, _status: rosterEntry?.effective_status, _type: rosterEntry?.creative?.object_type });
+      }
+      url = page.paging?.next ?? "";
+    }
+
+    return rows as unknown as RawRow[];
+  }
+
+  normalizeAdPerformance(rows: RawRow[]): AdPerformanceInput[] {
+    return (rows as unknown as (MetaAdInsightRow & { _status?: string; _type?: string })[]).map((row) => ({
+      campaignId: row.campaign_id,
+      campaignName: row.campaign_name ?? null,
+      adGroupId: row.adset_id,
+      adGroupName: row.adset_name ?? null,
+      adId: row.ad_id,
+      adName: row.ad_name ?? null,
+      adType: row._type ?? null,
+      // effective_status is Meta's own vocabulary (ACTIVE/PAUSED/ARCHIVED/
+      // DELETED/...) -- same normalizeStatus() the UI already uses for
+      // campaign status handles this, no extra mapping needed.
+      adStatus: row._status ?? null,
+      date: row.date_start,
+      spend: Number(row.spend ?? 0),
+      impressions: Number(row.impressions ?? 0),
+      clicks: Number(row.clicks ?? 0),
+      conversions: findPurchaseValue(row.actions),
+      revenue: findPurchaseValue(row.action_values),
+      raw: row as unknown as Record<string, unknown>,
+    }));
+  }
+
+  // --- product-level grain -----------------------------------------------------
+
+  async fetchProductPerformance(from: string, to: string): Promise<RawRow[]> {
+    if (!this.accessToken || !this.adAccountId) {
+      throw new Error("Meta Ads connector: call authenticate() before fetchProductPerformance().");
+    }
+
+    const rows: MetaProductInsightRow[] = [];
+    // Chunked, not one request for the whole range -- see
+    // PRODUCT_BREAKDOWN_CHUNK_DAYS's comment.
+    for (const chunk of chunkDateRange(from, to, PRODUCT_BREAKDOWN_CHUNK_DAYS)) {
+      const timeRange = encodeURIComponent(JSON.stringify({ since: chunk.from, until: chunk.to }));
+      let url =
+        `${GRAPH_BASE}/${this.adAccountId}/insights` +
+        `?level=ad` +
+        `&fields=${PRODUCT_INSIGHTS_FIELDS}` +
+        `&breakdowns=product_id` +
+        `&time_increment=1` +
+        `&time_range=${timeRange}` +
+        `&action_attribution_windows=${ATTRIBUTION_WINDOW_PARAM}` +
+        `&limit=200` +
+        `&access_token=${this.accessToken}`;
+
+      while (url) {
+        const page = await metaGet<MetaProductInsightRow>(url);
+        rows.push(...page.data);
+        url = page.paging?.next ?? "";
+      }
+    }
+
+    return rows as unknown as RawRow[];
+  }
+
+  normalizeProductPerformance(rows: RawRow[]): ProductPerformanceInput[] {
+    return (rows as unknown as MetaProductInsightRow[]).map((row) => {
+      const { id, title } = parseProductIdField(row.product_id);
+      return {
+        campaignId: row.campaign_id,
+        campaignName: row.campaign_name ?? null,
+        productItemId: id,
+        productTitle: title,
+        productBrand: null, // not exposed via this breakdown
+        productTypeL1: null, // Meta's product_id breakdown has no category dimension -- see grainTypes.ts
+        productTypeL2: null,
+        productTypeL3: null,
+        productChannel: null,
+        date: row.date_start,
+        spend: Number(row.spend ?? 0),
+        impressions: Number(row.impressions ?? 0),
+        clicks: Number(row.clicks ?? 0),
+        conversions: findPurchaseValue(row.actions),
+        revenue: findPurchaseValue(row.action_values),
+        raw: row as unknown as Record<string, unknown>,
+      };
+    });
   }
 }
