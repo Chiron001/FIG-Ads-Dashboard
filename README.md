@@ -14,8 +14,16 @@ normalized to IST (Asia/Kolkata).
   `/sync/status`, etc.) — the dashboard talks to this automatically, no
   need to hit it directly except for debugging.
 
-Both auto-deploy on push to `main` (Vercel for `/web`, Railway for
-`/server`) — no manual redeploy step needed after `git push`.
+Vercel auto-deploys reliably on push to `main`. **Railway's GitHub
+auto-deploy has not been firing** (confirmed twice — pushes land on GitHub
+but no new deployment starts) despite the repo showing as connected; cause
+not yet diagnosed, possibly an incomplete GitHub App authorization on
+Railway's side. Until that's fixed, redeploy `/server` manually after any
+`server/`, `shared/`, or `railway.json` change:
+
+```bash
+railway up --service server --ci --json
+```
 
 ## Status
 
