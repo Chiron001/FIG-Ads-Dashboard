@@ -7,8 +7,12 @@ import type {
   TimeseriesMetric,
 } from "@fig/shared";
 
-// Vite dev proxy rewrites /api -> http://localhost:4000 (see vite.config.ts).
-const BASE = "/api";
+// Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
+// (see vite.config.ts) -- that proxy doesn't exist in a production build,
+// so the deployed site needs the real backend URL baked in at build time
+// via VITE_API_BASE_URL (set as a Vercel env var, pointing at the Railway
+// deployment). Falls back to "/api" so local dev needs no env var at all.
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function getJSON<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
