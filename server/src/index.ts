@@ -31,11 +31,18 @@ app.get("/health/db", async (_req, res) => {
   }
 
   try {
-    const { error: pingError } = await supabase.from("_fig_healthcheck_probe").select("*").limit(1);
-    // A "relation does not exist" error still proves we reached Postgres and
-    // authenticated correctly — that's a successful connectivity check pre-migrations.
-    if (pingError && !/does not exist/i.test(pingError.message)) {
-      return res.status(500).json({ ok: false, reason: pingError.message });
+    // sync_log is one of the two tables db/migrations/0001_init.sql creates,
+    // so a successful (even zero-row) count proves both connectivity and
+    // that migrations have been applied.
+    const { error: pingError } = await supabase.from("sync_log").select("*", { count: "exact", head: true });
+    if (pingError) {
+      // PGRST205 = PostgREST can't find the table in its schema cache — the
+      // connection itself is fine, migrations just haven't run yet.
+      const reason =
+        pingError.code === "PGRST205"
+          ? "Connected, but sync_log doesn't exist yet — run `npm run migrate --workspace server`."
+          : pingError.message;
+      return res.status(500).json({ ok: false, reason });
     }
     return res.json({ ok: true, time: nowIST() });
   } catch (err) {

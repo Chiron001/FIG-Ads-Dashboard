@@ -1,7 +1,12 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
+
+// Same cwd caveat as server/src/config/env.ts — this script is invoked via
+// `npm run migrate --workspace server`, which sets cwd to /server, not the
+// repo root where .env actually lives.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 // Plain, dependency-light migration runner. Applies every *.sql file in
 // /db/migrations (repo root) in filename order, tracked in a

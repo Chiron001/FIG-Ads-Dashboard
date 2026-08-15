@@ -1,4 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "node:path";
+
+// `npm run dev --workspace server` (and prod `node dist/index.js` run from
+// server/) sets cwd to /server, not the repo root — dotenv's default
+// cwd-relative lookup misses the root .env entirely and every var silently
+// reads as undefined. Resolve explicitly instead of trusting cwd.
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 function optional(name: string): string | undefined {
   const v = process.env[name];
