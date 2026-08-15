@@ -1,13 +1,56 @@
-/* Minimal reset for Phase 1. Real dark-theme design system (Tailwind,
-   tokens, layout) is built in Phase 7. */
-:root {
-  color-scheme: dark;
+@import "tailwindcss";
+
+/* Dark-only design system — the spec calls for a dark-themed internal tool,
+   not a light/dark toggle. Values are the dataviz skill's validated
+   reference palette (dark column), extended with a couple of UI-chrome
+   tokens (surface-2, border) it doesn't itself define. */
+@theme {
+  --color-surface-0: #0d0d0d; /* page plane */
+  --color-surface-1: #1a1a19; /* card / chart surface */
+  --color-surface-2: #232322; /* hover / elevated */
+
+  --color-ink-primary: #ffffff;
+  --color-ink-secondary: #c3c2b7;
+  --color-ink-muted: #898781;
+
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-grid: #2c2c2a;
+  --color-axis: #383835;
+
+  /* Categorical palette, assigned in ALL_PLATFORMS fixed order — never
+     cycled or brand-matched, per the dataviz skill's CVD-safety rule. */
+  --color-platform-google: #3987e5;
+  --color-platform-meta: #d95926;
+  --color-platform-amazon: #199e70;
+  --color-platform-myntra: #c98500;
+
+  --color-status-good: #0ca30c;
+  --color-status-warning: #fab219;
+  --color-status-serious: #ec835a;
+  --color-status-critical: #d03b3b;
 }
 
 body {
   margin: 0;
+  background: var(--color-surface-0);
+  color: var(--color-ink-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
 }
 
 #root {
   min-height: 100svh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-platform-google) 40%, transparent);
+}
+
+/* tabular figures for anything that must align vertically (tables, axis ticks) */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
