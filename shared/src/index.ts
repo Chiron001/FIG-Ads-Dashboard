@@ -48,6 +48,10 @@ export interface CanonicalRow {
   revenue: number; // INR
   /** Source attribution window, e.g. meta_7d_click, amazon_14d, google_dda, myntra_as_reported. */
   attributionWindow: string;
+  /** Google Ads only (Search-eligible campaign types) -- search_impression_share. Null elsewhere/unavailable. */
+  searchImpressionShare: number | null;
+  /** Google Ads only -- search_budget_lost_impression_share. Null elsewhere/unavailable. */
+  searchBudgetLostImpressionShare: number | null;
   /** Original platform row, kept for debugging. */
   raw: Record<string, unknown> | null;
   ingestedAt: string; // ISO timestamptz
@@ -108,6 +112,8 @@ export interface DerivedMetrics {
   roas: number | null; // revenue / spend
   acos: number | null; // spend / revenue
   cvr: number | null; // conversions / clicks
+  cpa: number | null; // spend / conversions ("cost per order/acquisition")
+  aov: number | null; // revenue / conversions
 }
 
 function safeDivide(numerator: number, denominator: number): number | null {
@@ -128,6 +134,8 @@ export function computeDerivedMetrics(row: {
     roas: safeDivide(row.revenue, row.spend),
     acos: safeDivide(row.spend, row.revenue),
     cvr: safeDivide(row.conversions, row.clicks),
+    cpa: safeDivide(row.spend, row.conversions),
+    aov: safeDivide(row.revenue, row.conversions),
   };
 }
 
@@ -177,6 +185,11 @@ export interface CampaignRow extends DerivedMetrics {
   clicks: number;
   conversions: number;
   revenue: number;
+  /** Google Search campaigns only; null elsewhere/unavailable. */
+  searchImpressionShare: number | null;
+  searchBudgetLostImpressionShare: number | null;
+  /** (ROAS_current - ROAS_prior) / ROAS_prior for the equal-length period immediately preceding `from`. Null if either period has no spend for this campaign. */
+  roasDeltaWoW: number | null;
 }
 
 export interface MetricsCampaignsResponse {
@@ -184,6 +197,17 @@ export interface MetricsCampaignsResponse {
   to: string;
   platform: Platform;
   campaigns: CampaignRow[];
+}
+
+// --- app-level config (gross margin / target ROAS) ---------------------------
+//
+// Drives Break-even ROAS, Profit, and Verdict on the campaign table. Server
+// default comes from .env (GROSS_MARGIN / TARGET_ROAS); the UI reads this
+// once as a starting point and lets the analyst override live, per spec --
+// no localStorage, so overrides reset on reload.
+export interface AppConfig {
+  grossMargin: number; // fraction, e.g. 0.60
+  targetRoas: number; // e.g. 4
 }
 
 export interface PlatformSyncStatus {

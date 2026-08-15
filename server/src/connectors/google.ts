@@ -49,6 +49,27 @@ const GAQL_QUERY = (from: string, to: string) => `
   WHERE segments.date BETWEEN '${from}' AND '${to}'
 `;
 
+// search_impression_share / search_budget_lost_impression_share are
+// fundamentally CAMPAIGN-level-per-day metrics (Search-eligible campaign
+// types only -- PMax/Shopping/Display report them as absent/null, which
+// normalize() below treats as null, per column spec §6). Querying them
+// from `ad_group` like the main query would duplicate a non-additive
+// percentage across every ad group in a campaign, which is wrong to then
+// SUM() -- kept as a separate campaign-level query instead, merged into
+// CanonicalRowInput as synthetic ad_group_id=null rows (zero on every
+// additive metric, so they can't skew spend/clicks/etc totals; the API
+// layer reads these two columns with MAX() instead of SUM()).
+const IMPRESSION_SHARE_QUERY = (from: string, to: string) => `
+  SELECT
+    campaign.id,
+    campaign.name,
+    segments.date,
+    metrics.search_impression_share,
+    metrics.search_budget_lost_impression_share
+  FROM campaign
+  WHERE segments.date BETWEEN '${from}' AND '${to}'
+`;
+
 // Independent of any date range -- ad_group-level performance queries only
 // ever return rows for entities with actual activity that day, so a
 // paused or simply quiet-this-week campaign is invisible to fetchRaw()
@@ -110,8 +131,22 @@ export class GoogleAdsConnector implements AdsConnector {
     if (!this.customer) {
       throw new Error("Google Ads connector: call authenticate() before fetchRaw().");
     }
-    const rows = await this.customer.query(GAQL_QUERY(from, to));
-    return rows as unknown as RawRow[];
+    const adGroupRows = await this.customer.query(GAQL_QUERY(from, to));
+
+    // Isolated try/catch: impression share is a nice-to-have column, not
+    // core performance data -- a failure here (e.g. an account-level
+    // permission quirk) shouldn't take down the whole sync the way a
+    // failure in the main query should.
+    let impressionShareRows: RawRow[] = [];
+    try {
+      const rows = await this.customer.query(IMPRESSION_SHARE_QUERY(from, to));
+      impressionShareRows = (rows as unknown as RawRow[]).map((r) => ({ ...r, _kind: "impression_share" }));
+    } catch (err) {
+      console.warn("[google connector] impression-share query failed, continuing without it:", err);
+    }
+
+    const taggedAdGroupRows = (adGroupRows as unknown as RawRow[]).map((r) => ({ ...r, _kind: "ad_group" }));
+    return [...taggedAdGroupRows, ...impressionShareRows];
   }
 
   async fetchCampaignRoster(): Promise<CampaignRosterEntry[]> {
@@ -128,6 +163,42 @@ export class GoogleAdsConnector implements AdsConnector {
 
   normalize(rows: RawRow[]): CanonicalRowInput[] {
     return rows.map((r) => {
+      if (r._kind === "impression_share") {
+        const row = r as unknown as {
+          campaign: { id: number; name: string };
+          segments: { date: string };
+          metrics: {
+            search_impression_share?: number | string;
+            search_budget_lost_impression_share?: number | string;
+          };
+        };
+        // Synthetic campaign-level row: zero on every additive metric so it
+        // can never skew SUM(spend)/SUM(clicks)/etc; ad_group_id null (not
+        // any real ad group) so it can't collide with a real ad_group row
+        // under the unique index. See IMPRESSION_SHARE_QUERY's comment.
+        return {
+          platform: "google",
+          campaignId: String(row.campaign.id),
+          campaignName: row.campaign.name ?? null,
+          adGroupId: null,
+          adGroupName: null,
+          date: row.segments.date,
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          conversions: 0,
+          revenue: 0,
+          attributionWindow: ATTRIBUTION_WINDOW,
+          searchImpressionShare:
+            row.metrics.search_impression_share != null ? Number(row.metrics.search_impression_share) : null,
+          searchBudgetLostImpressionShare:
+            row.metrics.search_budget_lost_impression_share != null
+              ? Number(row.metrics.search_budget_lost_impression_share)
+              : null,
+          raw: row as unknown as Record<string, unknown>,
+        };
+      }
+
       const row = r as unknown as {
         campaign: { id: number; name: string };
         ad_group: { id: number; name: string };
@@ -154,6 +225,8 @@ export class GoogleAdsConnector implements AdsConnector {
         conversions: Number(row.metrics.conversions ?? 0),
         revenue: Number(row.metrics.conversions_value ?? 0),
         attributionWindow: ATTRIBUTION_WINDOW,
+        searchImpressionShare: null,
+        searchBudgetLostImpressionShare: null,
         raw: row as unknown as Record<string, unknown>,
       };
     });

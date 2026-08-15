@@ -216,6 +216,8 @@ export class MetaAdsConnector implements AdsConnector {
       conversions: findPurchaseValue(row.actions),
       revenue: findPurchaseValue(row.action_values),
       attributionWindow: ATTRIBUTION_WINDOW_LABEL,
+      searchImpressionShare: null, // Google Search-only concept, not applicable to Meta
+      searchBudgetLostImpressionShare: null,
       raw: row as unknown as Record<string, unknown>,
     }));
   }

@@ -5,6 +5,7 @@ import type {
   SyncStatusResponse,
   Platform,
   TimeseriesMetric,
+  AppConfig,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -42,6 +43,10 @@ export function fetchCampaigns(from: string, to: string, platform: Platform): Pr
 
 export function fetchSyncStatus(): Promise<SyncStatusResponse> {
   return getJSON(`/sync/status`);
+}
+
+export function fetchConfig(): Promise<AppConfig> {
+  return getJSON(`/config`);
 }
 
 export async function triggerSync(platform: Platform, from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {

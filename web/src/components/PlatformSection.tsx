@@ -18,6 +18,8 @@ interface Props {
   onSyncComplete: () => void;
   /** Bumped by the parent whenever any sync completes, to force a data refetch here. */
   refreshKey: number;
+  grossMargin: number;
+  targetRoas: number;
 }
 
 const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: number | null | undefined) => string }[] = [
@@ -31,7 +33,7 @@ const METRIC_OPTIONS: { value: TimeseriesMetric; label: string; formatter: (v: n
   { value: "acos", label: "ACOS", formatter: (v) => formatPercent(v) },
 ];
 
-export function PlatformSection({ platform, range, connected, lastSync, onSyncComplete, refreshKey }: Props) {
+export function PlatformSection({ platform, range, connected, lastSync, onSyncComplete, refreshKey, grossMargin, targetRoas }: Props) {
   const [totals, setTotals] = useState<PlatformTotals | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [metric, setMetric] = useState<TimeseriesMetric>("spend");
@@ -143,12 +145,14 @@ export function PlatformSection({ platform, range, connected, lastSync, onSyncCo
         <KpiTile label="ROAS" value={formatMultiplier(totals?.roas)} accent={color} />
       </div>
 
-      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-5 ${loading ? "opacity-60" : ""}`}>
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7 ${loading ? "opacity-60" : ""}`}>
         <KpiTile label="CTR" value={formatPercent(totals?.ctr)} />
         <KpiTile label="CPC" value={formatCurrency(totals?.cpc)} />
         <KpiTile label="CPM" value={formatCurrency(totals?.cpm)} />
         <KpiTile label="ACOS" value={formatPercent(totals?.acos)} />
         <KpiTile label="CVR" value={formatPercent(totals?.cvr)} />
+        <KpiTile label="CPA" value={formatCurrency(totals?.cpa)} />
+        <KpiTile label="AOV" value={formatCurrency(totals?.aov)} />
       </div>
 
       <div className="rounded-lg border border-border bg-surface-1 p-4">
@@ -169,7 +173,7 @@ export function PlatformSection({ platform, range, connected, lastSync, onSyncCo
         <TimeSeriesChart points={points} color={color} valueFormatter={activeMetric.formatter} seriesLabel={activeMetric.label} />
       </div>
 
-      <CampaignTable campaigns={campaigns} />
+      <CampaignTable campaigns={campaigns} grossMargin={grossMargin} targetRoas={targetRoas} />
     </div>
   );
 }

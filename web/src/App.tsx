@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Platform, SyncStatusResponse } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
-import { fetchSyncStatus } from "./lib/api";
+import { fetchSyncStatus, fetchConfig } from "./lib/api";
 import { DateRangePicker } from "./components/DateRangePicker";
 import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar } from "./components/PlatformSidebar";
 import { PlatformSection } from "./components/PlatformSection";
 import "./App.css";
+
+// Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
+// /config resolves -- avoids a flash of "0" in the inputs on first paint.
+const FALLBACK_GROSS_MARGIN = 0.6;
+const FALLBACK_TARGET_ROAS = 4;
 
 function App() {
   const [range, setRange] = useState<DateRange>(() => presetRange("last7"));
@@ -18,6 +23,24 @@ function App() {
   // every platform as not-connected just because the API call itself failed.
   const [syncStatusError, setSyncStatusError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Campaign-table economics -- fetched once as a starting point, then
+  // live-editable from the top bar (spec: "expose it as an editable field
+  // ... so the analyst can flip it and watch Profit / Break-even ROAS
+  // recompute live"). No localStorage -- resets to the server default on reload.
+  const [grossMargin, setGrossMargin] = useState(FALLBACK_GROSS_MARGIN);
+  const [targetRoas, setTargetRoas] = useState(FALLBACK_TARGET_ROAS);
+
+  useEffect(() => {
+    fetchConfig()
+      .then((c) => {
+        setGrossMargin(c.grossMargin);
+        setTargetRoas(c.targetRoas);
+      })
+      .catch(() => {
+        /* keep fallback defaults -- not worth a banner over a config nicety */
+      });
+  }, []);
 
   const loadSyncStatus = useCallback(() => {
     fetchSyncStatus()
@@ -55,14 +78,44 @@ function App() {
       <PlatformSidebar active={activePlatform} onChange={setActivePlatform} connected={connectedMap} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
+        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-ink-primary">{PLATFORM_LABELS[activePlatform]}</h2>
             <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-ink-secondary">
               All figures in INR
             </span>
           </div>
-          <DateRangePicker value={range} onChange={setRange} />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-ink-secondary">
+              <label className="flex items-center gap-1.5" title="Blended gross margin -- drives Profit and Break-even ROAS on the campaign table">
+                Margin
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={Math.round(grossMargin * 100)}
+                  onChange={(e) => setGrossMargin(Math.max(1, Math.min(100, Number(e.target.value) || 0)) / 100)}
+                  className="w-14 rounded-md border border-border bg-surface-1 px-1.5 py-1 text-right tabular-nums text-ink-primary"
+                />
+                %
+              </label>
+              <label className="flex items-center gap-1.5" title="Target ROAS -- drives the Scale/Maintain/Review verdict thresholds">
+                Target ROAS
+                <input
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={targetRoas}
+                  onChange={(e) => setTargetRoas(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-14 rounded-md border border-border bg-surface-1 px-1.5 py-1 text-right tabular-nums text-ink-primary"
+                />
+                x
+              </label>
+            </div>
+            <DateRangePicker value={range} onChange={setRange} />
+          </div>
         </header>
 
         <main className="min-w-0 flex-1 space-y-4 px-6 py-6">
@@ -83,6 +136,8 @@ function App() {
             lastSync={lastSync}
             onSyncComplete={handleSyncComplete}
             refreshKey={refreshKey}
+            grossMargin={grossMargin}
+            targetRoas={targetRoas}
           />
         </main>
       </div>

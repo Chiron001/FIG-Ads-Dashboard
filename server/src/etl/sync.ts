@@ -25,6 +25,8 @@ const UPSERT_COLUMNS = [
   "conversions",
   "revenue",
   "attribution_window",
+  "search_impression_share",
+  "search_budget_lost_impression_share",
   "raw",
 ] as const;
 
@@ -57,6 +59,8 @@ async function upsertRows(rows: CanonicalRowInput[]): Promise<number> {
         row.conversions,
         row.revenue,
         row.attributionWindow,
+        row.searchImpressionShare,
+        row.searchBudgetLostImpressionShare,
         row.raw ? JSON.stringify(row.raw) : null
       );
     });
@@ -77,6 +81,8 @@ async function upsertRows(rows: CanonicalRowInput[]): Promise<number> {
         clicks = EXCLUDED.clicks,
         conversions = EXCLUDED.conversions,
         revenue = EXCLUDED.revenue,
+        search_impression_share = EXCLUDED.search_impression_share,
+        search_budget_lost_impression_share = EXCLUDED.search_budget_lost_impression_share,
         raw = EXCLUDED.raw,
         ingested_at = now()
     `;

@@ -4,7 +4,7 @@ import { env } from "./config/env";
 import { getSupabase } from "./db/supabase";
 import { metricsRouter } from "./routes/metrics";
 import { syncRouter } from "./routes/sync";
-import type { HealthStatus } from "@fig/shared";
+import type { AppConfig, HealthStatus } from "@fig/shared";
 
 const app = express();
 app.use(cors());
@@ -19,6 +19,14 @@ function nowIST(): string {
 
 app.get("/health", (_req, res) => {
   const body: HealthStatus = { ok: true, service: "fig-ads-server", time: nowIST() };
+  res.json(body);
+});
+
+// Starting-point defaults for the campaign table's Break-even ROAS/Profit/
+// Verdict math -- the UI reads this once and lets the analyst override
+// live from there (no localStorage, so overrides don't persist reloads).
+app.get("/config", (_req, res) => {
+  const body: AppConfig = { grossMargin: env.grossMargin, targetRoas: env.targetRoas };
   res.json(body);
 });
 

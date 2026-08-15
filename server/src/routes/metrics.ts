@@ -130,6 +130,22 @@ metricsRouter.get("/timeseries", asyncHandler(async (req, res) => {
   res.json(response);
 }));
 
+/** Equal-length period immediately preceding `from` -- e.g. from=08-09..to=08-15
+ * (7 days) -> prior 08-02..08-08. Used for ROAS Δ WoW; "WoW" as a spec name
+ * but genuinely "prior period of the same length", not literally always 7 days. */
+function priorPeriod(from: string, to: string): { from: string; to: string } {
+  const fromDate = new Date(from + "T00:00:00Z");
+  const toDate = new Date(to + "T00:00:00Z");
+  const spanMs = toDate.getTime() - fromDate.getTime(); // inclusive span between the two dates
+  const priorTo = new Date(fromDate.getTime() - 24 * 60 * 60 * 1000);
+  const priorFrom = new Date(priorTo.getTime() - spanMs);
+  return { from: priorFrom.toISOString().slice(0, 10), to: priorTo.toISOString().slice(0, 10) };
+}
+
+function safeDivide(n: number, d: number): number | null {
+  return d > 0 ? n / d : null;
+}
+
 // GET /metrics/campaigns?from&to&platform=google
 metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   const range = parseDateRange(req.query as Record<string, unknown>);
@@ -145,11 +161,19 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
   // have activity in this range (fact), are known but quiet/paused
   // (roster-only), or predate the roster table entirely (fact-only,
   // status null). See db/migrations/0002_dim_campaign.sql.
+  //
+  // search_impression_share / search_budget_lost_impression_share are
+  // campaign-level-per-day, not additive across the ad_group rows they're
+  // (necessarily) stored alongside -- MAX() picks up the single value
+  // rather than SUM()ing a percentage into nonsense. See
+  // db/migrations/0003_search_impression_share.sql.
   const { rows } = await pool.query(
     `with fact as (
        select campaign_id, max(campaign_name) as campaign_name,
               sum(spend) as spend, sum(impressions) as impressions, sum(clicks) as clicks,
-              sum(conversions) as conversions, sum(revenue) as revenue
+              sum(conversions) as conversions, sum(revenue) as revenue,
+              max(search_impression_share) as search_impression_share,
+              max(search_budget_lost_impression_share) as search_budget_lost_impression_share
        from fact_ad_performance
        where date between $1 and $2 and platform::text = $3
        group by campaign_id
@@ -167,24 +191,46 @@ metricsRouter.get("/campaigns", asyncHandler(async (req, res) => {
        coalesce(f.impressions, 0)::float8 as impressions,
        coalesce(f.clicks, 0)::float8 as clicks,
        coalesce(f.conversions, 0)::float8 as conversions,
-       coalesce(f.revenue, 0)::float8 as revenue
+       coalesce(f.revenue, 0)::float8 as revenue,
+       f.search_impression_share::float8 as search_impression_share,
+       f.search_budget_lost_impression_share::float8 as search_budget_lost_impression_share
      from roster r
      full outer join fact f on f.campaign_id = r.campaign_id
      order by spend desc nulls last`,
     [range.from, range.to, platform]
   );
 
-  const campaigns: CampaignRow[] = rows.map((r) => ({
-    campaignId: r.campaign_id,
-    campaignName: r.campaign_name,
-    status: r.status,
-    spend: r.spend,
-    impressions: r.impressions,
-    clicks: r.clicks,
-    conversions: r.conversions,
-    revenue: r.revenue,
-    ...computeDerivedMetrics(r),
-  }));
+  const prior = priorPeriod(range.from, range.to);
+  const { rows: priorRows } = await pool.query(
+    `select campaign_id, sum(spend)::float8 as spend, sum(revenue)::float8 as revenue
+     from fact_ad_performance
+     where date between $1 and $2 and platform::text = $3
+     group by campaign_id`,
+    [prior.from, prior.to, platform]
+  );
+  const priorByCampaign = new Map(priorRows.map((r) => [r.campaign_id as string, r]));
+
+  const campaigns: CampaignRow[] = rows.map((r) => {
+    const derived = computeDerivedMetrics(r);
+    const priorRow = priorByCampaign.get(r.campaign_id);
+    const priorRoas = priorRow ? safeDivide(priorRow.revenue, priorRow.spend) : null;
+    const roasDeltaWoW = derived.roas != null && priorRoas != null && priorRoas !== 0 ? (derived.roas - priorRoas) / priorRoas : null;
+
+    return {
+      campaignId: r.campaign_id,
+      campaignName: r.campaign_name,
+      status: r.status,
+      spend: r.spend,
+      impressions: r.impressions,
+      clicks: r.clicks,
+      conversions: r.conversions,
+      revenue: r.revenue,
+      searchImpressionShare: r.search_impression_share,
+      searchBudgetLostImpressionShare: r.search_budget_lost_impression_share,
+      roasDeltaWoW,
+      ...derived,
+    };
+  });
 
   const response: MetricsCampaignsResponse = { from: range.from, to: range.to, platform: platform as Platform, campaigns };
   res.json(response);
