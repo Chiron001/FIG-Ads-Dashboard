@@ -21,7 +21,10 @@ import type {
   MetricsAdsResponse,
   MetaSkuAttributionResponse,
   MetaCreativePerformanceResponse,
+  SettingsResponse,
+  AdditionalCost,
 } from "@fig/shared";
+import { getStoredPassword } from "./sitePassword";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
 // (see vite.config.ts) -- that proxy doesn't exist in a production build,
@@ -30,13 +33,44 @@ import type {
 // deployment). Falls back to "/api" so local dev needs no env var at all.
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
+// Whole-site password gate -- every request carries whatever's currently
+// stored (see lib/sitePassword.ts), including "" before it's ever been
+// entered; the server just 401s that case like any other mismatch. One
+// header builder shared by every fetch call below so there's a single place
+// this attaches, not one per call site.
+function authHeaders(): Record<string, string> {
+  return { "X-Site-Password": getStoredPassword() ?? "" };
+}
+
 async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? body.reason ?? `${res.status} ${res.statusText}`);
   }
   return res.json();
+}
+
+async function patchJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error ?? errBody.reason ?? `${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+/** Validates a CANDIDATE password (not necessarily the stored one) against
+ * the server -- used by the password gate both for the initial form
+ * submission and to silently revalidate a stored value on reload. Doesn't
+ * throw on 401 -- that's an expected "wrong password" outcome, not an error. */
+export async function checkSitePassword(candidate: string): Promise<boolean> {
+  const res = await fetch(`${BASE}/auth/check`, { headers: { "X-Site-Password": candidate } });
+  return res.ok;
 }
 
 export function fetchSummary(from: string, to: string, platforms: Platform[]): Promise<MetricsSummaryResponse> {
@@ -64,10 +98,14 @@ export function fetchConfig(): Promise<AppConfig> {
   return getJSON(`/config`);
 }
 
+// Deliberately NOT postJSON -- a failed sync responds 502 with a real
+// {status,rows,error} body the caller reads, not something to throw away in
+// favor of a generic exception (matches the pre-existing behavior here,
+// only the auth header is new).
 export async function triggerSync(platform: Platform, from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {
   const res = await fetch(`${BASE}/sync/${platform}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ from, to }),
   });
   return res.json();
@@ -92,7 +130,7 @@ export function fetchShopifyStatus(): Promise<ShopifyStatus> {
 export async function triggerShopifySync(from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {
   const res = await fetch(`${BASE}/shopify/sync`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ from, to }),
   });
   return res.json();
@@ -168,4 +206,14 @@ export function fetchMetaSkuAttribution(from: string, to: string): Promise<MetaS
 
 export function fetchMetaCreativePerformance(from: string, to: string): Promise<MetaCreativePerformanceResponse> {
   return getJSON(`/meta-creative-performance?from=${from}&to=${to}`);
+}
+
+// --- Settings (API integrations status, COGS %, EBITDA cost inputs) --------
+
+export function fetchSettings(): Promise<SettingsResponse> {
+  return getJSON(`/settings`);
+}
+
+export function updateSettings(body: { cogsRate?: number; additionalCosts?: AdditionalCost[] }): Promise<SettingsResponse> {
+  return patchJSON(`/settings`, body);
 }

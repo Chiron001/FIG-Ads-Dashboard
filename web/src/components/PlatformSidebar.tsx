@@ -9,8 +9,16 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
  * (not an ad platform -- no spend/campaigns, not in the shared Platform
  * union), plus Meta's SKU Attribution and Creative Performance sub-views
  * (nested under Meta Ads in the nav, not platforms of their own), plus
- * Shopify's Product Quadrants sub-view (nested under Shopify the same way). */
-export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution" | "meta-creative-performance" | "shopify-product-quadrants";
+ * Shopify's Product Quadrants sub-view (nested under Shopify the same way),
+ * plus Settings (app-wide config, its own top-level group -- not tied to
+ * any one platform or Shopify). */
+export type SidebarSelection =
+  | Platform
+  | "shopify"
+  | "meta-sku-attribution"
+  | "meta-creative-performance"
+  | "shopify-product-quadrants"
+  | "settings";
 
 const SHOPIFY_COLOR = "#95BF47";
 
@@ -49,6 +57,20 @@ function QuadrantIcon({ size }: { size: number }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <rect x="2" y="2" width="12" height="12" rx="1.3" stroke="currentColor" strokeWidth="1.3" />
       <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.1" />
+    </svg>
+  );
+}
+
+function GearIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="2.3" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M8 1.6v1.5M8 12.9v1.5M14.4 8h-1.5M3.1 8H1.6M12.3 3.7l-1.06 1.06M4.76 11.24l-1.06 1.06M12.3 12.3l-1.06-1.06M4.76 4.76 3.7 3.7"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -257,10 +279,29 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               <span className="truncate">↳ Product Quadrants</span>
             </button>
           )}
+
+          {/* App-wide config (API integration status, COGS %, EBITDA cost
+              inputs) -- its own group, not nested under a platform or
+              Shopify, since it isn't a lens on either. */}
+          {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Admin</div>}
+          <button
+            type="button"
+            title={collapsed ? "Settings" : undefined}
+            onClick={() => handleChange("settings")}
+            className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
+              collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+            } ${active === "settings" ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
+          >
+            {active === "settings" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
+            <span className="relative shrink-0">
+              <GearIcon size={18} />
+            </span>
+            {!collapsed && <span className="flex-1 truncate">Settings</span>}
+          </button>
         </nav>
 
         {!collapsed && (
-          <div className="border-t border-border px-4 py-3 text-[11px] text-ink-muted">Internal tool, no login required</div>
+          <div className="border-t border-border px-4 py-3 text-[11px] text-ink-muted">Internal tool, password-protected</div>
         )}
       </aside>
     </>

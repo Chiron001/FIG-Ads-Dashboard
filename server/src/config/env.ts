@@ -79,6 +79,12 @@ export const env = {
   // live -- these are just the server-side defaults.
   grossMargin: Number(optional("GROSS_MARGIN") ?? 0.6),
   targetRoas: Number(optional("TARGET_ROAS") ?? 5.5),
+
+  // Whole-site shared-password gate (not per-user accounts -- this tool has
+  // none) -- see middleware/siteAuth.ts. Defaults to the literal password
+  // requested, but overridable via env so it can be rotated without a
+  // code change/redeploy.
+  sitePassword: optional("SITE_PASSWORD") ?? "55555",
 };
 
 export { required, optional };

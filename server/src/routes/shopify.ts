@@ -5,6 +5,7 @@ import { runShopifySync } from "../etl/shopifySync";
 import { ShopifyConnector } from "../connectors/shopify";
 import { env } from "../config/env";
 import { median, pearsonCorrelation, linearRegression } from "../stats";
+import { getCogsRate } from "../db/appSettings";
 import type {
   ShopifyOrderSummary,
   ShopifySummaryResponse,
@@ -127,16 +128,6 @@ function skuAttributedSpendForProduct(skus: string[], tokenSpend: Map<string, nu
   return total;
 }
 
-// COGS assumption (spec: "consider COGS as 35% of Selling price") -- applied
-// uniformly since neither Shopify nor either ad platform exposes real
-// per-product cost data. Gross profit / POAS below are therefore modeled
-// figures, not accounting-grade ones; the frontend labels them as such.
-// Declared here (used by both /products and /product-quadrants below) --
-// `const` isn't hoisted the way `function` is, but every route handler that
-// closes over it only runs at request time, well after this module has
-// finished loading, so the ordering is safe either way.
-const COGS_RATE = 0.35;
-
 export const shopifyRouter = Router();
 
 function parseDateRange(query: Record<string, unknown>): { from: string; to: string } | null {
@@ -252,7 +243,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform, adMetrics, skuTokenSpend, engagementByHandle] = await Promise.all([
+    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform, adMetrics, skuTokenSpend, engagementByHandle, cogsRate] = await Promise.all([
       pool.query(
         `select
            product_id,
@@ -276,6 +267,7 @@ shopifyRouter.get(
       fetchAdMetricsByProductKeys(range.from, range.to),
       fetchSkuAttributedSpendByToken(range.from, range.to),
       fetchProductEngagementSafe(range.from, range.to),
+      getCogsRate(),
     ]);
 
     const products: ShopifyProductRow[] = rows.map((r) => {
@@ -287,7 +279,7 @@ shopifyRouter.get(
       const skuAttributedSpend = skuAttributedSpendForProduct(skus, skuTokenSpend);
       const metaCatalogSpend = r.product_handle ? (adMetrics.metaByHandle.get(r.product_handle)?.spend ?? 0) : 0;
       const adSpend = skuAttributedSpend + metaCatalogSpend;
-      const grossProfit = r.revenue * (1 - COGS_RATE);
+      const grossProfit = r.revenue * (1 - cogsRate);
 
       const engagement = r.product_handle ? engagementByHandle.get(r.product_handle) : undefined;
 
@@ -397,7 +389,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, adMetrics, sessionsByHandle, sessionsByHandleByPlatform] = await Promise.all([
+    const [{ rows }, adMetrics, sessionsByHandle, sessionsByHandleByPlatform, cogsRate] = await Promise.all([
       pool.query(
         `select
            product_id,
@@ -416,6 +408,7 @@ shopifyRouter.get(
       fetchAdMetricsByProductKeys(range.from, range.to),
       fetchProductSessionsSafe(range.from, range.to),
       fetchProductSessionsByPlatformSafe(range.from, range.to),
+      getCogsRate(),
     ]);
 
     const allRows: ProductQuadrantRow[] = rows.map((r) => {
@@ -430,7 +423,7 @@ shopifyRouter.get(
       const marketingSessions = googleSessions == null && metaSessions == null ? null : (googleSessions ?? 0) + (metaSessions ?? 0);
 
       const revenue = r.revenue;
-      const cogs = revenue * COGS_RATE;
+      const cogs = revenue * cogsRate;
       const grossProfit = revenue - cogs;
 
       return {
@@ -495,7 +488,7 @@ shopifyRouter.get(
     const response: ProductQuadrantsResponse = {
       from: range.from,
       to: range.to,
-      cogsRate: COGS_RATE,
+      cogsRate,
       spendMedian,
       revenueMedian,
       products,

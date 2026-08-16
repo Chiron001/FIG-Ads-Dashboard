@@ -811,3 +811,44 @@ export interface MetricsAdsResponse {
   ads: AdRow[];
   reconciliation: ReconciliationInfo;
 }
+
+// --- Settings (API integrations + editable COGS/EBITDA cost inputs) --------
+//
+// App-wide, not per-user (this tool has no accounts) -- one shared singleton
+// row in Postgres (db/migrations/0008_app_settings.sql). Integration status
+// is deliberately connected/not-connected ONLY, never the actual key/token
+// values -- this page is reachable by everyone the site password is shared
+// with, so real credentials never cross the wire here.
+
+export type AdditionalCostType = "percent_of_revenue" | "flat_per_order" | "flat_total";
+
+export interface AdditionalCost {
+  id: string;
+  name: string;
+  type: AdditionalCostType;
+  /** percent_of_revenue: a fraction (0.02 = 2%). flat_per_order: currency
+   * per order. flat_total: a flat currency amount for the selected range,
+   * regardless of its length -- a modeling simplification the UI calls out. */
+  value: number;
+}
+
+export interface AppSettings {
+  /** Cost of goods sold as a fraction of selling price (0.35 = 35%). */
+  cogsRate: number;
+  additionalCosts: AdditionalCost[];
+  updatedAt: string;
+}
+
+export interface IntegrationStatus {
+  id: string;
+  label: string;
+  connected: boolean;
+  /** Env var name(s) this integration reads -- shown so an admin knows what
+   * to set, never the values themselves. */
+  envVars: string[];
+}
+
+export interface SettingsResponse {
+  settings: AppSettings;
+  integrations: IntegrationStatus[];
+}

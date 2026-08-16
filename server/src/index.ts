@@ -9,11 +9,19 @@ import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
 import { metaCreativePerformanceRouter } from "./routes/metaCreativePerformance";
+import { settingsRouter } from "./routes/settings";
+import { authRouter } from "./routes/auth";
+import { siteAuthMiddleware } from "./middleware/siteAuth";
 import type { AppConfig, HealthStatus } from "@fig/shared";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Whole-site shared-password gate -- see middleware/siteAuth.ts. Mounted
+// before every router below (including /auth itself, which the middleware
+// explicitly exempts by path) so nothing is reachable without it.
+app.use(siteAuthMiddleware);
+app.use("/auth", authRouter);
 
 app.use("/metrics", metricsRouter);
 app.use("/sync", syncRouter);
@@ -34,6 +42,7 @@ app.use("/meta-sku-attribution", metaSkuAttributionRouter);
 // routes/metaCreativePerformance.ts and util/creativeTag.ts.
 app.use("/meta-creative-performance", metaCreativePerformanceRouter);
 app.use("/stats", statsRouter);
+app.use("/settings", settingsRouter);
 
 function nowIST(): string {
   return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T");
