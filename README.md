@@ -851,6 +851,51 @@ Build proceeds phase by phase per the project spec, committing after each.
         it yet); settings reset back to defaults (35% COGS, no additional
         costs) after the verification pass, since those PATCH calls hit the
         live database.
+- [x] **Shopify Projection Sheet**: monthly unit targets vs. live pace
+      (sidebar: Shopify → Projection Sheet), one row per ACTIVE Shopify
+      product via a new live-catalog connector method
+      (`fetchAllActiveProducts()`, paginated GraphQL `products()`) -- not
+      limited to products with sales history, so a brand-new product still
+      gets a row to plan against.
+      - **Unit Target and Price are the only user-entered fields**,
+        persisted to a new `product_targets` table keyed by product + month
+        (`db/migrations/0009_product_targets.sql`), editable inline with a
+        Save-changes bar (dirty-row tracking).
+      - **Everything else is computed live** on every request, per the
+        requested formulas: Target Revenue = Unit Target × Price; Required
+        Traffic = Unit Target ÷ Previous Month CVR (CVR = units ÷ sessions
+        -- confirmed against the attached spreadsheet's own numbers, since
+        the request text's literal "sessions ÷ units" doesn't reproduce
+        the spreadsheet's own Traffic Required figures); CPM = Meta
+        product-catalog spend/impressions for the previous month (reuses
+        `fetchAdMetricsByProductKeys`, exported from `routes/shopify.ts`);
+        Minimum Ad Spend Required = (1000 ÷ CPM) × Required Traffic × 0.8;
+        Planned DRR = Unit Target ÷ days in this month; Current DRR = MTD
+        units sold ÷ today's day-of-month; plus two "projected month end"
+        columns (units and sessions, pace-extrapolated) and an Insight
+        column implementing the described decision tree (on pace + traffic
+        healthy → on track; on pace but traffic short → increase sessions;
+        behind pace with traffic also short → increase sessions; behind
+        pace despite healthy traffic → review ads/creative).
+      - CPM currently reads N/A for most products -- Meta's per-product
+        catalog sync only started 2026-08-12, so July has no matched data
+        yet. A real data-coverage gap, not a bug; will resolve on its own
+        as more full months accumulate.
+      - MTD session breakdown (Meta paid / Google paid / rest / total /
+        Meta share) reuses the connector's existing per-product session
+        queries unchanged -- already generic to any date range.
+      - Table groups its ~20 columns by color-tinted header bands
+        (target-impact / pace / actuals / session-breakdown / projection)
+        for scannability at that width; sticky product column; a KPI
+        summary row (products with a target, total target units/revenue,
+        MTD units, on-track vs. needs-attention counts).
+      - **Verified**: full monorepo build clean, 87/87 server tests green;
+        live-curled end to end against real data (176 active products)
+        including a full set-target → recompute → reset-to-null round trip
+        (unitTarget=150, price=3299 correctly produced targetRevenue=
+        494850, requiredTraffic=12150, plannedDrr=4.84, and an insight
+        verdict matching the actual pace) before wiring the frontend to
+        it; deployed frontend first, then backend, and confirmed live.
 
 ## Structure
 
