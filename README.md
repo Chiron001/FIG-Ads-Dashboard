@@ -376,6 +376,24 @@ Build proceeds phase by phase per the project spec, committing after each.
         applied before sort, not a server round-trip. Verified live:
         "orilamp" matches on Product Name across multiple SKU rows;
         "058" matches on SKU alone, correctly narrowing to one row.
+      - **"Total" row pinned to the top of the table** (5th follow-up),
+        on all four tabs -- a weighted rollup (sum/sum, never averaged)
+        over whatever's currently visible, so it always answers "total
+        spend of the campaigns matching my search", not "total spend of
+        everything". Recomputes live as search/"only tagged"/level
+        change. Non-summable columns (name/SKU/status, and adCount/
+        campaignCount on the SKU tab -- summing those would double-count
+        ads/campaigns shared across multiple SKU rows) show "—"; the
+        first column shows "Total (N)" with the visible row count.
+        Deliberately placed as the first `<tbody>` row, not a `<tfoot>`
+        row at the bottom (the existing convention in `CampaignTable`) --
+        the user asked for it "on top" specifically, so it doesn't
+        require scrolling past a long result set to see. Verified live:
+        Campaign tab shows Total (24) unfiltered -> Total (19) when
+        searching "dig", spend/impressions/clicks and every other summed
+        column updating correctly; SKU tab shows Total (7) with Ads/
+        Campaigns correctly "—" (not summed) and a real weighted Website
+        ROAS (671.27x) across all matched SKUs.
 
 ## Structure
 

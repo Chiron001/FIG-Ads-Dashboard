@@ -239,6 +239,86 @@ function matchesSearch(row: AnyRow, level: Level, term: string): boolean {
   return haystacks.some((h) => h?.toLowerCase().includes(term));
 }
 
+function safeDivide(n: number, d: number): number | null {
+  return d > 0 ? n / d : null;
+}
+
+interface Totals {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  cpa: number | null;
+  adsRevenue: number;
+  adsRoas: number | null;
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+/** Weighted rollup (sum/sum, never averaged) over whatever rows are
+ * currently visible -- recomputes on every search/filter/level change so
+ * "Total" always reflects the filtered result set, not the full dataset. */
+function computeTotals(rows: AnyRow[]): Totals {
+  const spend = rows.reduce((s, r) => s + r.spend, 0);
+  const impressions = rows.reduce((s, r) => s + r.impressions, 0);
+  const clicks = rows.reduce((s, r) => s + r.clicks, 0);
+  const conversions = rows.reduce((s, r) => s + r.conversions, 0);
+  const adsRevenue = rows.reduce((s, r) => s + r.adsRevenue, 0);
+  const matched = rows.filter((r) => r.websiteRevenue != null);
+  const websiteRevenue = matched.length > 0 ? matched.reduce((s, r) => s + (r.websiteRevenue ?? 0), 0) : null;
+  return {
+    spend,
+    impressions,
+    clicks,
+    conversions,
+    ctr: safeDivide(clicks, impressions),
+    cvr: safeDivide(conversions, clicks),
+    cpc: safeDivide(spend, clicks),
+    cpa: safeDivide(spend, conversions),
+    adsRevenue,
+    adsRoas: safeDivide(adsRevenue, spend),
+    websiteRevenue,
+    websiteRoas: websiteRevenue != null ? safeDivide(websiteRevenue, spend) : null,
+  };
+}
+
+/** Renders a Totals-row cell for a given column -- name/SKU/status/count
+ * columns aren't summable (or, for adCount/campaignCount, would double-count
+ * ads/campaigns shared across multiple SKU rows), so those show "—". */
+function renderTotalCell(colKey: string, totals: Totals): React.ReactNode {
+  switch (colKey) {
+    case "spend":
+      return formatCurrency(totals.spend);
+    case "impressions":
+      return formatNumber(totals.impressions);
+    case "clicks":
+      return formatNumber(totals.clicks);
+    case "ctr":
+      return formatPercent(totals.ctr);
+    case "cvr":
+      return formatPercent(totals.cvr);
+    case "cpc":
+      return formatCurrency(totals.cpc);
+    case "cpa":
+      return formatCurrency(totals.cpa);
+    case "conversions":
+      return formatNumber(totals.conversions);
+    case "adsRevenue":
+      return formatCurrency(totals.adsRevenue);
+    case "adsRoas":
+      return <RoasCell value={totals.adsRoas} />;
+    case "websiteRevenue":
+      return formatCurrency(totals.websiteRevenue);
+    case "websiteRoas":
+      return <RoasCell value={totals.websiteRoas} />;
+    default:
+      return "—";
+  }
+}
+
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
   const aNull = av == null;
   const bNull = bv == null;
@@ -316,6 +396,11 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
     if (!col) return filtered;
     return [...filtered].sort((a, b) => compareValues(col.sortValue(a), col.sortValue(b), sortDir));
   }, [rows, sortKey, sortDir, level, search]);
+
+  // Reflects whatever's currently visible -- the filtered/searched set,
+  // not the full dataset -- so it answers "total spend of the campaigns
+  // matching my search", not "total spend of everything".
+  const totals = useMemo(() => computeTotals(sorted), [sorted]);
 
   function toggleSort(key: string) {
     if (key === sortKey) {
@@ -416,6 +501,18 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
                 </tr>
               </thead>
               <tbody>
+                <tr className="border-b-2 border-border bg-surface-2/40 font-semibold">
+                  {columns.map((col, i) => (
+                    <td
+                      key={col.key}
+                      className={`whitespace-nowrap px-4 py-2 tabular-nums ${
+                        col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
+                      }`}
+                    >
+                      {i === 0 ? `Total (${sorted.length})` : renderTotalCell(col.key, totals)}
+                    </td>
+                  ))}
+                </tr>
                 {sorted.map((row) => (
                   <tr key={row.key} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
                     {columns.map((col) => (
