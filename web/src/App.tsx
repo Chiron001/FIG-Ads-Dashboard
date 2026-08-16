@@ -11,6 +11,7 @@ import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
+import { ShopifyProductQuadrantsSection } from "./components/ShopifyProductQuadrantsSection";
 import { SpendFlowBand } from "./components/SpendFlowBand";
 import { CommandPalette } from "./components/CommandPalette";
 import "./App.css";
@@ -95,14 +96,16 @@ function App() {
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
+  const isShopifyProductQuadrants = activeSelection === "shopify-product-quadrants";
   const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
-  const lastSync = isShopify
-    ? (shopifyStatus?.lastSync ?? null)
-    : isMetaSubView
-      ? // Derived entirely from Meta + Shopify's already-synced data -- no
-        // sync of its own, so "last synced" reuses Meta's.
-        (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
-      : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
+  const lastSync =
+    isShopify || isShopifyProductQuadrants
+      ? (shopifyStatus?.lastSync ?? null)
+      : isMetaSubView
+        ? // Derived entirely from Meta + Shopify's already-synced data -- no
+          // sync of its own, so "last synced" reuses Meta's.
+          (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
+        : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
 
   function handleSyncComplete() {
     setRefreshKey((k) => k + 1);
@@ -118,14 +121,16 @@ function App() {
   // on every ad-platform page (using the same global range), hidden on
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
   // lens on Meta specifically, one platform of the four this band spans).
-  const showSpendFlow = !isShopify && !isMetaSubView;
+  const showSpendFlow = !isShopify && !isMetaSubView && !isShopifyProductQuadrants;
   const title = isShopify
     ? "Shopify"
-    : isMetaSkuAttribution
-      ? "Meta Ads — SKU Attribution"
-      : isMetaCreativePerformance
-        ? "Meta Ads — Creative Performance"
-        : PLATFORM_LABELS[activeSelection];
+    : isShopifyProductQuadrants
+      ? "Shopify — Product Quadrants"
+      : isMetaSkuAttribution
+        ? "Meta Ads — SKU Attribution"
+        : isMetaCreativePerformance
+          ? "Meta Ads — Creative Performance"
+          : PLATFORM_LABELS[activeSelection];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -162,7 +167,7 @@ function App() {
             </div>
           )}
 
-          {!isShopify && <AttributionBanner />}
+          {!isShopify && !isShopifyProductQuadrants && <AttributionBanner />}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -185,6 +190,15 @@ function App() {
               connected={shopifyStatus?.connected ?? false}
               lastSync={lastSync}
               onSyncComplete={handleSyncComplete}
+              refreshKey={refreshKey}
+              targetRoas={targetRoas}
+              comparisonMode={comparisonMode}
+            />
+          ) : isShopifyProductQuadrants ? (
+            <ShopifyProductQuadrantsSection
+              key="shopify-product-quadrants"
+              range={range}
+              connected={shopifyStatus?.connected ?? false}
               refreshKey={refreshKey}
               targetRoas={targetRoas}
             />

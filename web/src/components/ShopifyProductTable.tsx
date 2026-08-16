@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ShopifyProductRow } from "@fig/shared";
 import { formatCurrency, formatNumber, formatPercent } from "../lib/format";
+import { computeDelta } from "../lib/delta";
+import { DeltaBadge } from "./DeltaBadge";
 
 interface Column {
   key: keyof ShopifyProductRow;
@@ -25,12 +27,21 @@ const COLUMNS: Column[] = [
 
 interface Props {
   products: ShopifyProductRow[];
+  /** Same product rows, fetched for the "Compare to" period -- null/absent
+   * when no comparison is active. Matched by productId below, delta shown
+   * on Revenue only (the one figure this table's sorting defaults to). */
+  comparisonProducts?: ShopifyProductRow[] | null;
 }
 
-export function ShopifyProductTable({ products }: Props) {
+export function ShopifyProductTable({ products, comparisonProducts }: Props) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<keyof ShopifyProductRow>("revenue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const comparisonByProductId = useMemo(() => {
+    if (!comparisonProducts) return null;
+    return new Map(comparisonProducts.map((p) => [p.productId, p]));
+  }, [comparisonProducts]);
 
   const sorted = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -97,20 +108,24 @@ export function ShopifyProductTable({ products }: Props) {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((row) => (
-                <tr key={row.productId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
-                  {COLUMNS.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`whitespace-nowrap px-4 py-2 tabular-nums ${
-                        col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
-                      } ${col.key === "title" ? "max-w-xs truncate font-medium" : ""}`}
-                    >
-                      {col.format(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {sorted.map((row) => {
+                const comp = comparisonByProductId?.get(row.productId) ?? null;
+                return (
+                  <tr key={row.productId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
+                    {COLUMNS.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`whitespace-nowrap px-4 py-2 tabular-nums ${
+                          col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
+                        } ${col.key === "title" ? "max-w-xs truncate font-medium" : ""}`}
+                      >
+                        {col.format(row)}
+                        {col.key === "revenue" && comparisonByProductId && <DeltaBadge value={computeDelta(row.revenue, comp?.revenue)} />}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -88,7 +88,12 @@
    color utility Tailwind can generate from a theme token, so glass ships as
    an explicit recipe (below) built on these custom properties instead. */
 :root {
-  --glass-bg: rgba(20, 23, 28, 0.6);
+  /* Bumped from 0.6 -- confirmed live that vivid scrolled-under content
+     (the Spend Flow band's orange, mainly) bled through enough to make
+     top-bar text hard to read. Still glass (the inset highlight + blur
+     stay), just solid enough that legibility never depends on what
+     happens to be scrolled underneath it. */
+  --glass-bg: rgba(16, 18, 22, 0.92);
   --glass-border: rgba(255, 255, 255, 0.09);
   --glass-highlight: rgba(255, 255, 255, 0.07);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);

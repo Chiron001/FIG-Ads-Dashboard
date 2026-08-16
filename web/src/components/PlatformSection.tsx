@@ -7,6 +7,7 @@ import { PLATFORM_COLORS } from "../lib/platformColors";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { formatRelativeTime } from "../lib/relativeTime";
 import { comparisonRange, COMPARISON_LABELS, type ComparisonMode } from "../lib/comparisonRange";
+import { computeDelta } from "../lib/delta";
 import { KpiTile } from "./KpiTile";
 import { TimeSeriesChart, type ChartPoint, type SmoothingMode } from "./TimeSeriesChart";
 import { CampaignTable } from "./CampaignTable";
@@ -25,14 +26,6 @@ interface Props {
   grossMargin: number;
   targetRoas: number;
   comparisonMode: ComparisonMode;
-}
-
-/** % change vs the comparison period; null (not undefined) when the
- * comparison itself is undefined (zero/missing prior value), which
- * KpiTile renders as "—" rather than a misleading 0%. */
-function computeDelta(current: number | null | undefined, prior: number | null | undefined): number | null {
-  if (current == null || prior == null || prior === 0) return null;
-  return (current - prior) / prior;
 }
 
 /** Return on the *next rupee* of spend (spec §6c) -- always vs the
@@ -79,6 +72,7 @@ export function PlatformSection({
   const [comparisonTotals, setComparisonTotals] = useState<PlatformTotals | null>(null);
   const [priorPeriodTotals, setPriorPeriodTotals] = useState<PlatformTotals | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [comparisonCampaigns, setComparisonCampaigns] = useState<CampaignRow[] | null>(null);
   const [metric, setMetric] = useState<TimeseriesMetric>("spend");
   const [smoothing, setSmoothing] = useState<SmoothingMode>("ma7"); // spec §5: smoothed is the default, not raw
   const [points, setPoints] = useState<ChartPoint[]>([]);
@@ -103,13 +97,17 @@ export function PlatformSection({
       fetchCampaigns(range.from, range.to, platform),
       compRange ? fetchSummary(compRange.from, compRange.to, [platform]) : Promise.resolve(null),
       priorRange ? fetchSummary(priorRange.from, priorRange.to, [platform]) : Promise.resolve(null),
+      // Comparison mode isn't just the KPI row's deltas anymore -- Campaigns
+      // and Portfolio analysis both want the same comparison-period rows.
+      compRange ? fetchCampaigns(compRange.from, compRange.to, platform) : Promise.resolve(null),
     ])
-      .then(([summary, campaignsRes, compSummary, priorSummary]) => {
+      .then(([summary, campaignsRes, compSummary, priorSummary, compCampaignsRes]) => {
         if (cancelled) return;
         setTotals(summary.platforms[0] ?? null);
         setCampaigns(campaignsRes.campaigns);
         setComparisonTotals(compSummary?.platforms[0] ?? null);
         setPriorPeriodTotals(priorSummary?.platforms[0] ?? null);
+        setComparisonCampaigns(compCampaignsRes?.campaigns ?? null);
       })
       .catch((err) => !cancelled && setError(String(err.message ?? err)))
       .finally(() => !cancelled && setLoading(false));
@@ -310,8 +308,6 @@ export function PlatformSection({
         <TimeSeriesChart points={points} color={color} valueFormatter={activeMetric.formatter} seriesLabel={activeMetric.label} smoothing={smoothing} />
       </div>
 
-      <CampaignTable campaigns={campaigns} grossMargin={grossMargin} targetRoas={targetRoas} platform={platform} range={range} />
-
       <div className="rounded-2xl border border-border bg-surface-1">
         <button
           type="button"
@@ -328,10 +324,27 @@ export function PlatformSection({
         </button>
         {showPortfolio && (
           <div className="border-t border-border p-4">
-            <PortfolioView platform={platform} range={range} grossMargin={grossMargin} targetRoas={targetRoas} color={color} refreshKey={refreshKey} />
+            <PortfolioView
+              platform={platform}
+              range={range}
+              grossMargin={grossMargin}
+              targetRoas={targetRoas}
+              color={color}
+              refreshKey={refreshKey}
+              comparisonMode={comparisonMode}
+            />
           </div>
         )}
       </div>
+
+      <CampaignTable
+        campaigns={campaigns}
+        grossMargin={grossMargin}
+        targetRoas={targetRoas}
+        platform={platform}
+        range={range}
+        comparisonCampaigns={comparisonCampaigns}
+      />
 
       {/* Two new grains, Google + Meta (each has its own connector methods
           for both) -- each is a different breakdown of the SAME campaign
@@ -356,7 +369,14 @@ export function PlatformSection({
             </button>
             {showProducts && (
               <div className="border-t border-border">
-                <ProductsSection platform={platform} range={range} grossMargin={grossMargin} campaigns={campaigns} refreshKey={refreshKey} />
+                <ProductsSection
+                  platform={platform}
+                  range={range}
+                  grossMargin={grossMargin}
+                  campaigns={campaigns}
+                  refreshKey={refreshKey}
+                  comparisonMode={comparisonMode}
+                />
               </div>
             )}
           </div>

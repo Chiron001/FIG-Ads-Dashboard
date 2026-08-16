@@ -42,4 +42,10 @@ export const METRIC_EXPLAINERS: Record<string, MetricExplainer> = {
     description: "The SKU's entire Shopify revenue for the period -- not necessarily revenue this specific ad caused. See the directional-attribution caveat on this section.",
   },
   "Website ROAS": { formula: "Website Revenue ÷ Spend", description: "Return on ad spend using Shopify's ground-truth order revenue instead of the platform's own claim." },
+  "Ad Spend": { formula: "Google spend + Meta spend, matched to this product", description: "Combined ad spend across both platforms for this product, decoded from each platform's product catalog ID and matched to the Shopify product." },
+  "Gross Profit": { formula: "Revenue × (1 − COGS rate)", description: "Contribution margin -- revenue minus modeled cost of goods sold. COGS is assumed at 35% of selling price (no real per-product cost data exists yet), so this is a modeled figure, not an accounting one." },
+  POAS: {
+    formula: "Gross Profit ÷ Ad Spend",
+    description: "Profit on ad spend -- how much contribution margin each ad rupee returned, unlike ROAS which counts every rupee of revenue as if it were pure profit. The margin-aware number a budgeting decision should actually use.",
+  },
 };

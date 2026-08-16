@@ -3,7 +3,10 @@ import type { CampaignRow, ProductGroupBy, GrainPlatform, MetricsProductsRespons
 import type { DateRange } from "../lib/dateRanges";
 import { fetchProducts, fetchProductsPareto } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
+import { comparisonRange, type ComparisonMode } from "../lib/comparisonRange";
+import { computeDelta } from "../lib/delta";
 import { InfoNote } from "./InfoNote";
+import { DeltaBadge } from "./DeltaBadge";
 
 interface Props {
   platform: GrainPlatform;
@@ -11,6 +14,7 @@ interface Props {
   grossMargin: number;
   campaigns: CampaignRow[];
   refreshKey: number;
+  comparisonMode: ComparisonMode;
 }
 
 interface EnrichedProductRow {
@@ -34,6 +38,8 @@ interface EnrichedProductRow {
   pctOfRevenue: number | null;
   websiteRevenue: number | null;
   websiteRoas: number | null;
+  spendDelta: number | null;
+  revenueDelta: number | null;
 }
 
 const GOOGLE_GROUP_BY_OPTIONS: { value: ProductGroupBy; label: string }[] = [
@@ -59,7 +65,7 @@ function productLabel(row: MetricsProductsResponse["products"][number]): string 
   return row.productTypeL1 ?? row.key ?? "N/A";
 }
 
-export function ProductsSection({ platform, range, grossMargin, campaigns, refreshKey }: Props) {
+export function ProductsSection({ platform, range, grossMargin, campaigns, refreshKey, comparisonMode }: Props) {
   const groupByOptions = platform === "google" ? GOOGLE_GROUP_BY_OPTIONS : META_GROUP_BY_OPTIONS;
   // spec §1f: default to the L1 roll-up -- only meaningful on Google, so
   // Meta defaults straight to SKU (its only option).
@@ -67,6 +73,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
   const [campaignId, setCampaignId] = useState<string>("");
   const [data, setData] = useState<MetricsProductsResponse | null>(null);
   const [pareto, setPareto] = useState<MetricsProductsParetoResponse | null>(null);
+  const [comparisonData, setComparisonData] = useState<MetricsProductsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [showTailLeaks, setShowTailLeaks] = useState(false);
   const [hideZeroSpend, setHideZeroSpend] = useState(true); // same default as the campaign table / Ads section
@@ -82,20 +89,28 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    const compRange = comparisonRange(range, comparisonMode);
     Promise.all([
       fetchProducts(platform, range.from, range.to, groupBy, campaignId || null),
       fetchProductsPareto(platform, range.from, range.to, campaignId || null),
+      compRange ? fetchProducts(platform, compRange.from, compRange.to, groupBy, campaignId || null) : Promise.resolve(null),
     ])
-      .then(([productsRes, paretoRes]) => {
+      .then(([productsRes, paretoRes, compRes]) => {
         if (cancelled) return;
         setData(productsRes);
         setPareto(paretoRes);
+        setComparisonData(compRes);
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [platform, range.from, range.to, groupBy, campaignId, refreshKey]);
+  }, [platform, range.from, range.to, groupBy, campaignId, refreshKey, comparisonMode]);
+
+  const comparisonByKey = useMemo(() => {
+    if (!comparisonData) return null;
+    return new Map(comparisonData.products.map((p) => [p.key, p]));
+  }, [comparisonData]);
 
   const enriched = useMemo((): EnrichedProductRow[] => {
     if (!data) return [];
@@ -103,30 +118,35 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
     const totalSpend = visible.reduce((s, p) => s + p.spend, 0);
     const totalRevenue = visible.reduce((s, p) => s + p.revenue, 0);
     return visible
-      .map((p) => ({
-        key: p.key,
-        label: productLabel(p),
-        skuCount: p.skuCount,
-        spend: p.spend,
-        impressions: p.impressions,
-        clicks: p.clicks,
-        ctr: p.ctr,
-        cvr: p.cvr,
-        cpc: p.cpc,
-        cpa: p.cpa,
-        conversions: p.conversions,
-        aov: p.aov,
-        revenue: p.revenue,
-        roas: p.roas,
-        acos: p.acos,
-        profit: p.revenue * grossMargin - p.spend,
-        pctOfSpend: totalSpend > 0 ? p.spend / totalSpend : null,
-        pctOfRevenue: totalRevenue > 0 ? p.revenue / totalRevenue : null,
-        websiteRevenue: p.websiteRevenue,
-        websiteRoas: p.websiteRoas,
-      }))
+      .map((p) => {
+        const comp = comparisonByKey?.get(p.key) ?? null;
+        return {
+          key: p.key,
+          label: productLabel(p),
+          skuCount: p.skuCount,
+          spend: p.spend,
+          impressions: p.impressions,
+          clicks: p.clicks,
+          ctr: p.ctr,
+          cvr: p.cvr,
+          cpc: p.cpc,
+          cpa: p.cpa,
+          conversions: p.conversions,
+          aov: p.aov,
+          revenue: p.revenue,
+          roas: p.roas,
+          acos: p.acos,
+          profit: p.revenue * grossMargin - p.spend,
+          pctOfSpend: totalSpend > 0 ? p.spend / totalSpend : null,
+          pctOfRevenue: totalRevenue > 0 ? p.revenue / totalRevenue : null,
+          websiteRevenue: p.websiteRevenue,
+          websiteRoas: p.websiteRoas,
+          spendDelta: computeDelta(p.spend, comp?.spend),
+          revenueDelta: computeDelta(p.revenue, comp?.revenue),
+        };
+      })
       .sort((a, b) => b.spend - a.spend);
-  }, [data, grossMargin, hideZeroSpend]);
+  }, [data, grossMargin, hideZeroSpend, comparisonByKey]);
 
   const platformCampaigns = campaigns; // caller already scopes this to the current platform
 
@@ -273,7 +293,10 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
                     {r.label}
                   </td>
                   {groupBy !== "sku" && <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(r.skuCount)}</td>}
-                  <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.spend)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">
+                    {formatCurrency(r.spend)}
+                    <DeltaBadge value={r.spendDelta} />
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.pctOfSpend, 1)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(r.impressions)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(r.clicks)}</td>
@@ -282,7 +305,10 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.cpa)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(r.conversions)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.aov)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.revenue)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">
+                    {formatCurrency(r.revenue)}
+                    <DeltaBadge value={r.revenueDelta} />
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.pctOfRevenue, 1)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatMultiplier(r.roas)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.acos)}</td>

@@ -319,6 +319,86 @@ export interface ShopifyProductsResponse {
   products: ShopifyProductRow[];
 }
 
+// --- Product Quadrants (Shopify products x combined ad spend) --------------
+//
+// A statistical sub-view under Shopify, parallel to Meta's SKU Attribution:
+// classifies every Shopify product into one of 4 quadrants by ad spend vs.
+// sales (both split at the cross-sectional MEDIAN across products with any
+// activity this period -- not an arbitrary fixed threshold), and layers on
+// POAS (profit-based ROAS), a cross-sectional spend/revenue regression, and
+// correlation between sessions and revenue. adSpend/adImpressions combine
+// Google + Meta, matched to the Shopify product the same way Products'
+// Website ROAS is (see server/src/routes/shopify.ts's product-quadrants
+// route for the join logic) -- deliberately summed across platforms here,
+// unlike almost everywhere else in the app, because "how did all ad spend
+// on this product perform" is the actual question this view answers.
+export type ProductQuadrant = "Q1" | "Q2" | "Q3" | "Q4";
+
+export interface ProductQuadrantRow {
+  productId: string;
+  title: string | null;
+  sku: string | null;
+  productType: string | null;
+  vendor: string | null;
+  unitsSold: number;
+  revenue: number;
+  /** Combined Google + Meta ad spend matched to this product. 0 (not null)
+   * when the product genuinely has no matched ad spend this period. */
+  adSpend: number;
+  adImpressions: number;
+  sessions: number | null;
+  /** Google + Meta sessions combined -- null only if BOTH are null (the
+   * ShopifyQL call itself failed), not when one platform had zero. */
+  marketingSessions: number | null;
+  cvr: number | null;
+  /** Cost of goods sold -- revenue * cogsRate (see the response-level rate). */
+  cogs: number;
+  /** revenue - cogs, i.e. contribution margin. */
+  grossProfit: number;
+  /** grossProfit / adSpend -- "profit on ad spend", the ROAS a margin-aware
+   * budgeting decision should actually use. Null if adSpend is 0. */
+  poas: number | null;
+  /** revenue / adSpend -- plain ROAS, shown alongside POAS for comparison. Null if adSpend is 0. */
+  roas: number | null;
+  /** Null for a product excluded from classification (no revenue AND no ad
+   * spend this period -- nothing to classify). */
+  quadrant: ProductQuadrant | null;
+}
+
+export interface ProductQuadrantCorrelation {
+  r: number;
+  n: number;
+  strength: "weak" | "moderate" | "strong";
+}
+
+/** Cross-sectional OLS across products (not a time series): revenue ~
+ * adSpend, product-by-product. beta1 is the portfolio's marginal-revenue-
+ * per-rupee-of-spend estimate -- a coarse but statistically real "if you
+ * spent ₹X more on an under-spent product, expect ~₹(X × beta1) more
+ * revenue" projection, r2 exposed so its reliability is never hidden. */
+export interface ProductSpendRegression {
+  beta0: number;
+  beta1: number;
+  r2: number;
+  n: number;
+}
+
+export interface ProductQuadrantsResponse {
+  from: string;
+  to: string;
+  cogsRate: number;
+  spendMedian: number;
+  revenueMedian: number;
+  products: ProductQuadrantRow[];
+  /** How many products had neither revenue nor ad spend this period --
+   * excluded from quadrant/products above, surfaced as a count so "88
+   * products" never silently becomes "62 products" with no explanation. */
+  excludedInactiveCount: number;
+  sessionsVsRevenue: ProductQuadrantCorrelation | null;
+  marketingSessionsVsRevenue: ProductQuadrantCorrelation | null;
+  spendRevenueRegression: ProductSpendRegression | null;
+}
+
 export interface ShopifyStatus {
   connected: boolean;
   lastSync: SyncLogEntry | null;

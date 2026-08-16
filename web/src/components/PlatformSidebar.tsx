@@ -8,8 +8,9 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
 /** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify
  * (not an ad platform -- no spend/campaigns, not in the shared Platform
  * union), plus Meta's SKU Attribution and Creative Performance sub-views
- * (nested under Meta Ads in the nav, not platforms of their own). */
-export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution" | "meta-creative-performance";
+ * (nested under Meta Ads in the nav, not platforms of their own), plus
+ * Shopify's Product Quadrants sub-view (nested under Shopify the same way). */
+export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution" | "meta-creative-performance" | "shopify-product-quadrants";
 
 const SHOPIFY_COLOR = "#95BF47";
 
@@ -39,6 +40,15 @@ function FilmIcon({ size }: { size: number }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <rect x="2" y="3" width="12" height="10" rx="1.3" stroke="currentColor" strokeWidth="1.3" />
       <path d="M2 6.2h12M5.5 3v3.2M10.5 3v3.2" stroke="currentColor" strokeWidth="1.1" />
+    </svg>
+  );
+}
+
+function QuadrantIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2" width="12" height="12" rx="1.3" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.1" />
     </svg>
   );
 }
@@ -213,6 +223,40 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               </>
             )}
           </button>
+
+          {/* Shopify-only sub-view: a statistical lens on Shopify's own
+              product/order data (matched to combined ad spend), not a
+              platform of its own -- same nesting pattern as Meta's two
+              sub-views above. */}
+          {collapsed ? (
+            <div className="mt-0.5 flex flex-col items-center gap-0.5">
+              <button
+                type="button"
+                title="Shopify — Product Quadrants"
+                onClick={() => handleChange("shopify-product-quadrants")}
+                className={`rounded-md p-1.5 transition-colors ${
+                  active === "shopify-product-quadrants" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                }`}
+              >
+                <QuadrantIcon size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleChange("shopify-product-quadrants")}
+              className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                active === "shopify-product-quadrants"
+                  ? "bg-surface-2 text-ink-primary"
+                  : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+              }`}
+            >
+              {active === "shopify-product-quadrants" && (
+                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />
+              )}
+              <span className="truncate">↳ Product Quadrants</span>
+            </button>
+          )}
         </nav>
 
         {!collapsed && (

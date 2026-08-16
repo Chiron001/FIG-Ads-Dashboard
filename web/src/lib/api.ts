@@ -8,6 +8,7 @@ import type {
   AppConfig,
   ShopifySummaryResponse,
   ShopifyProductsResponse,
+  ProductQuadrantsResponse,
   ShopifyStatus,
   CompareCampaignsResponse,
   AnomaliesResponse,
@@ -78,6 +79,10 @@ export function fetchShopifySummary(from: string, to: string): Promise<ShopifySu
 
 export function fetchShopifyProducts(from: string, to: string): Promise<ShopifyProductsResponse> {
   return getJSON(`/shopify/products?from=${from}&to=${to}`);
+}
+
+export function fetchShopifyProductQuadrants(from: string, to: string): Promise<ProductQuadrantsResponse> {
+  return getJSON(`/shopify/product-quadrants?from=${from}&to=${to}`);
 }
 
 export function fetchShopifyStatus(): Promise<ShopifyStatus> {

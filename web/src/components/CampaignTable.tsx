@@ -13,9 +13,11 @@ import {
 import { normalizeStatus } from "../lib/campaignStatus";
 import { computeMedians, verdictFor, type Verdict } from "../lib/verdict";
 import { CONFIDENCE_TONE } from "../lib/statsFormat";
+import { computeDelta } from "../lib/delta";
 import type { DateRange } from "../lib/dateRanges";
 import { CampaignDetailPanel } from "./CampaignDetailPanel";
 import { CompareCampaignsPanel } from "./CompareCampaignsPanel";
+import { DeltaBadge } from "./DeltaBadge";
 
 // Every row here plus the client-computed columns that depend on live
 // config (gross margin, target ROAS) or on the currently-visible row set
@@ -28,6 +30,10 @@ interface EnrichedRow extends CampaignRow {
   pctOfRevenue: number | null;
   spendRevDelta: number | null;
   verdict: Verdict;
+  /** vs the "Compare to" period selected in the top bar -- null when no
+   * comparison is active, or this campaign didn't exist/match in it. */
+  spendDelta: number | null;
+  roasDelta: number | null;
 }
 
 const STATUS_DOT_CLASS: Record<string, string> = {
@@ -148,7 +154,19 @@ const COLUMNS: Column[] = [
     sortValue: (r) => r.verdict.tag,
     render: (r) => <VerdictBadge verdict={r.verdict} />,
   },
-  { key: "spend", label: "Spend", align: "right", tiers: ["decision", "detailed"], sortValue: (r) => r.spend, render: (r) => formatCurrency(r.spend) },
+  {
+    key: "spend",
+    label: "Spend",
+    align: "right",
+    tiers: ["decision", "detailed"],
+    sortValue: (r) => r.spend,
+    render: (r) => (
+      <>
+        {formatCurrency(r.spend)}
+        <DeltaBadge value={r.spendDelta} />
+      </>
+    ),
+  },
   {
     key: "pctOfSpend",
     label: "% Spend",
@@ -209,7 +227,12 @@ const COLUMNS: Column[] = [
     align: "right",
     tiers: ["decision", "detailed"],
     sortValue: (r) => r.roas,
-    render: (r) => <RoasWithConfidence row={r} />,
+    render: (r) => (
+      <>
+        <RoasWithConfidence row={r} />
+        <DeltaBadge value={r.roasDelta} />
+      </>
+    ),
   },
   {
     key: "reliability",
@@ -303,9 +326,12 @@ interface Props {
   targetRoas: number;
   platform: Platform;
   range: DateRange;
+  /** The same campaign breakdown, fetched for the "Compare to" period --
+   * null when no comparison is active. Matched by campaignId below. */
+  comparisonCampaigns?: CampaignRow[] | null;
 }
 
-export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, range }: Props) {
+export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, range, comparisonCampaigns }: Props) {
   const [search, setSearch] = useState("");
   const [hideZeroSpend, setHideZeroSpend] = useState(true); // spec §5 default
   const [tier, setTier] = useState<Tier>("decision"); // spec §4 default
@@ -327,6 +353,11 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
 
   // % of Spend / % of Revenue / verdict medians are all defined over the
   // *visible* set (spec §2/§3) -- recomputed here whenever that set changes.
+  const comparisonByCampaignId = useMemo(() => {
+    if (!comparisonCampaigns) return null;
+    return new Map(comparisonCampaigns.map((c) => [c.campaignId, c]));
+  }, [comparisonCampaigns]);
+
   const enriched = useMemo((): EnrichedRow[] => {
     const totalSpend = visible.reduce((s, r) => s + r.spend, 0);
     const totalRevenue = visible.reduce((s, r) => s + r.revenue, 0);
@@ -335,6 +366,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
     return visible.map((r) => {
       const pctOfSpend = totalSpend > 0 ? r.spend / totalSpend : null;
       const pctOfRevenue = totalRevenue > 0 ? r.revenue / totalRevenue : null;
+      const comp = comparisonByCampaignId?.get(r.campaignId) ?? null;
       return {
         ...r,
         profit: r.revenue * grossMargin - r.spend,
@@ -343,9 +375,11 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
         pctOfRevenue,
         spendRevDelta: pctOfSpend != null && pctOfRevenue != null ? pctOfRevenue - pctOfSpend : null,
         verdict: verdictFor(r, targetRoas, breakEvenRoas ?? Infinity, medians),
+        spendDelta: computeDelta(r.spend, comp?.spend),
+        roasDelta: computeDelta(r.roas, comp?.roas),
       };
     });
-  }, [visible, grossMargin, targetRoas, breakEvenRoas]);
+  }, [visible, grossMargin, targetRoas, breakEvenRoas, comparisonByCampaignId]);
 
   const sorted = useMemo(() => {
     const col = COLUMNS.find((c) => c.key === sortKey);
@@ -369,6 +403,21 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
     // etc -- falls straight out of computeDerivedMetrics on the summed
     // inputs, which is exactly that ratio (spec §5).
     const derived = computeDerivedMetrics(sums);
+
+    // Same weighted-rollup treatment for the comparison side, over
+    // whichever comparison campaigns matched the currently-visible set
+    // (not the full comparison-period roster -- a filtered/hidden-zero-
+    // spend view should compare like against like).
+    const compSums = enriched.reduce(
+      (acc, r) => {
+        const comp = comparisonByCampaignId?.get(r.campaignId);
+        if (!comp) return acc;
+        return { spend: acc.spend + comp.spend, revenue: acc.revenue + comp.revenue };
+      },
+      { spend: 0, revenue: 0 }
+    );
+    const compRoas = compSums.spend > 0 ? compSums.revenue / compSums.spend : null;
+
     return {
       campaignId: "__summary__",
       campaignName: "Total",
@@ -389,8 +438,10 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
       pctOfRevenue: sums.revenue > 0 ? 1 : null,
       spendRevDelta: sums.spend > 0 && sums.revenue > 0 ? 0 : null,
       verdict: { tag: "Review", tone: "neutral" },
+      spendDelta: computeDelta(sums.spend, compSums.spend > 0 ? compSums.spend : null),
+      roasDelta: computeDelta(derived.roas, compRoas),
     };
-  }, [enriched, grossMargin, breakEvenRoas]);
+  }, [enriched, grossMargin, breakEvenRoas, comparisonByCampaignId]);
 
   function toggleSort(key: string) {
     if (key === sortKey) {
