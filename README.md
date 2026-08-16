@@ -777,6 +777,80 @@ Build proceeds phase by phase per the project spec, committing after each.
         wiring the frontend to it; deployed to Railway (server) and
         confirmed via Vercel's own deployment log that production picked
         up the same commit.
+- [x] **Shopify Products table: full 3-column comparison + POAS/ROAS/ad
+      spend/ATC/bounce rate.**
+      - **Comparison mode expands into 3 sub-columns** (Now / Prior / Δ%)
+        for every numeric column, not just Revenue -- a 2-row grouped
+        header (`colSpan=3` per metric). Product stays sticky-left so it's
+        still visible scrolling the now much wider table.
+      - **POAS column**: Gross Profit ÷ combined ad spend (Gross Profit =
+        revenue × 65%, same COGS=35% convention as Product Quadrants).
+      - **Two separate ad-spend columns**, kept distinct on request since
+        they measure different things: **SKU Attributed Spend** (Meta
+        spend from ads whose *name* carries the product's SKU tag, same
+        mechanism as SKU Attribution) and **Meta Catalog Spend** (matched
+        via the product catalog instead, an exact handle match) --
+        additive, not double-counted, since they're different Meta ad
+        mechanisms.
+      - **ROAS column**: Revenue ÷ (SKU Attributed Spend + Meta Catalog
+        Spend).
+      - **ATC and Bounce Rate columns**: both live via new ShopifyQL
+        queries (`ShopifyConnector.fetchProductEngagement`) --
+        `sessions_with_cart_additions` and `bounce_rate`, confirmed against
+        the real schema before building; bounce rate is session-weighted
+        when multiple raw landing paths collapse into one product handle.
+      - **Verified**: full monorepo build clean, 87/87 server tests green,
+        new fields live-curled against real data (120 products, 63 with
+        matched ad spend, 98 with ATC>0, 116 with a bounce rate) across two
+        different date ranges before wiring the UI; deployed to Railway and
+        confirmed live.
+- [x] **Settings page (API integrations + editable COGS/EBITDA costs) and a
+      whole-site password gate.**
+      - **Settings page** (sidebar: Admin → Settings), backed by a new
+        singleton `app_settings` table (`db/migrations/0008_app_settings.sql`):
+        - **API Integrations**: connected/not-connected status + which env
+          var(s) each platform needs -- deliberately never the actual
+          key/token values, since this page is reachable by everyone the
+          site password is shared with (confirmed explicitly before
+          building, given the alternative meant handing out real Meta/
+          Google/Shopify credentials to that same audience).
+        - **Products COGS %** is now editable and persisted
+          (`server/src/db/appSettings.ts`'s `getCogsRate()`), replacing the
+          hardcoded 0.35 constant that used to live in `shopify.ts` --
+          both Products (POAS/ROAS) and Product Quadrants read the live
+          value on every request.
+        - **Additional Costs (EBITDA)**: an editable list of {name, type,
+          value} cost line items -- % of revenue, flat per order, or flat
+          for the whole selected range -- persisted alongside COGS.
+        - **A live EBITDA preview** (Revenue − COGS − blended Google+Meta
+          ad spend − Additional Costs) for the globally selected date
+          range, reflecting unsaved edits before Save so the effect is
+          visible immediately.
+      - **Whole-site password gate**, `SITE_PASSWORD` (defaults to
+        "55555"): a shared-secret header (`X-Site-Password`), checked on
+        every backend request except `/auth/check` (the check itself) and
+        `/health` (Railway's own probe) -- see
+        `server/src/middleware/siteAuth.ts`. The frontend
+        (`PasswordGate.tsx`, wraps `<App/>` in `main.tsx`) shows a password
+        form until entered correctly, stores it in localStorage, and
+        attaches it to every subsequent API call; a stored password is
+        silently revalidated against the server on every reload, so
+        rotating `SITE_PASSWORD` bounces stale browsers back to the form.
+        Deliberately simple -- one shared secret, not per-user accounts,
+        matching what was actually asked for (keep a shared link from being
+        casually stumbled into, not defend against a determined reader of
+        the JS bundle).
+      - **Verified**: full monorepo build clean, 87/87 server tests green;
+        migration applied to the live DB; the whole gate + settings CRUD
+        live-curled end to end (401 without the header, 200 with it,
+        GET/PATCH persists and is reflected in Products' POAS immediately,
+        a CORS preflight confirmed the browser is allowed to send the
+        custom header cross-origin) before wiring the frontend to it.
+        Deployed frontend first, then backend (so no window existed where
+        the backend required the header but the live frontend didn't send
+        it yet); settings reset back to defaults (35% COGS, no additional
+        costs) after the verification pass, since those PATCH calls hit the
+        live database.
 
 ## Structure
 
