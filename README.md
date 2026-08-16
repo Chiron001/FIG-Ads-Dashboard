@@ -704,6 +704,79 @@ Build proceeds phase by phase per the project spec, committing after each.
         screenshot-checked the merged date/comparison picker, the
         collapsed-sidebar fix, an open InfoNote popover, and the paired
         Pareto/catalogue-spend charts, all with zero console errors.
+- [x] **UI/UX iteration 3 — layout fix, glass legibility, comparison mode
+      everywhere, and a new Shopify statistics sub-section.** Both `/web`
+      and `/server` changed (the new sub-section needed a real backend join).
+      - **Portfolio analysis moved above Campaigns** in the per-platform
+        page (`PlatformSection.tsx`) -- was rendering below it.
+      - **TopBar glass background bumped from 60% to 92% opacity**
+        (`--glass-bg` in `index.css`) -- confirmed live that the Spend Flow
+        band's vivid orange was bleeding through enough on scroll to make
+        the title/search/Margin/Target ROAS text illegible. Still glass
+        (inset highlight + blur unchanged), just solid enough that
+        legibility never depends on what's scrolled underneath it.
+      - **"Compare to" now applies everywhere, not just the primary KPI
+        row.** New shared `web/src/lib/delta.ts` (`computeDelta`) and
+        `web/src/components/DeltaBadge.tsx` (▲/▼ + signed %, colorblind-safe
+        via arrow+color, never a misleading 0%), reused across every
+        section that touches comparison: `CampaignTable` (per-row and Total
+        row Spend/ROAS deltas), `PortfolioView` (a revenue-vs-comparison
+        summary line above the Pareto chart), `ProductsSection` (per-row
+        Spend/Revenue deltas), `ShopifySection` (every applicable KPI tile
+        + a Pareto revenue comparison line), `ShopifyProductTable` (per-row
+        Revenue delta). Comparison charts show a compact "current vs.
+        comparison, delta%" summary line rather than overlaying two
+        time-series on one axis, which would conflate two different
+        campaign/product rankings.
+      - **New Shopify sub-section: Product Quadrants** (sidebar: Shopify →
+        ↳ Product Quadrants), a statistical parallel to Meta's SKU
+        Attribution.
+        - **Backend** (`GET /shopify/product-quadrants`): joins combined
+          Google + Meta ad spend to every Shopify product, decoded and
+          re-keyed at the *product* level (not variant) -- Google's
+          `shopify_zz_{productId}_{variantId}` collapses to
+          `gid://shopify/Product/{productId}` (variant dropped, matching
+          `fact_shopify_line_items.product_id` directly), Meta's
+          `/products/{handle}#product` matches by handle. Same decoding
+          approach as Products' Website ROAS, duplicated rather than
+          imported since the source patterns are private to `metrics.ts`.
+        - **POAS** (Profit on Ad Spend) = Gross Profit ÷ Ad Spend, where
+          Gross Profit = Revenue × 65% (COGS modeled at a flat 35% of
+          selling price -- no real per-product cost data exists yet, so
+          this is explicitly a modeled figure, not an accounting one).
+        - **4-quadrant classification**, split at the cross-sectional
+          median (not an arbitrary fixed threshold) across active products
+          this period: Q1 low spend/high sales (scale opportunity), Q2
+          high spend/high sales (star performers), Q3 high spend/low sales
+          (reassess), Q4 low spend/low sales (low priority). Products with
+          neither spend nor revenue are excluded from classification, with
+          the excluded count surfaced rather than silently dropped.
+        - **Statistics**: Pearson correlation (`pearsonCorrelation`)
+          between site-wide sessions and revenue, and separately between
+          *marketing* (Google+Meta) sessions and revenue, one point per
+          product; a cross-sectional OLS (`linearRegression`, revenue ~
+          spend across products, not a time series) powers a risk-modeling
+          scenario table projecting incremental revenue/gross profit/net
+          return at +₹10k/25k/50k of additional spend, with the r² and a
+          low-fit warning always shown alongside so a weak fit is never
+          presented as a confident forecast.
+        - **Frontend** (`ShopifyProductQuadrantsSection.tsx`): a quadrant
+          scatter chart (bubble size = impressions, reference lines at the
+          two medians), 4 quadrant summary cards, a POAS-ranked bar chart
+          paired half-width with a spend-share donut by quadrant, two
+          half-width correlation scatters, the risk-modeling panel, and a
+          full sortable/filterable product table. New `ProductQuadrant*`
+          types in `shared/src/index.ts`. Quadrant colors reuse the app's
+          existing validated status palette (good/critical/info/warning)
+          rather than inventing a new categorical set.
+      - **Verified**: full monorepo build (`tsc`, both workspaces) and the
+        87-test server suite green; the new endpoint live-curled against
+        real data (153 active products, quadrant counts Q1 32/Q2 44/Q3
+        32/Q4 45, sessions-vs-revenue r=0.87 n=149, marketing-sessions-vs-
+        revenue r=0.85 n=149, spend/revenue regression r²=0.42) before
+        wiring the frontend to it; deployed to Railway (server) and
+        confirmed via Vercel's own deployment log that production picked
+        up the same commit.
 
 ## Structure
 
