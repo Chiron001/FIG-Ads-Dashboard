@@ -367,6 +367,15 @@ Build proceeds phase by phase per the project spec, committing after each.
         point of showing it. Verified live: `FIG-01-029` shows "Orilamp -
         Mini Lamp (Limited Edition) +4 more" (5 real variant SKUs share
         that family prefix).
+      - **"Contains" search box** (4th follow-up), scoped to whatever
+        level is active -- SKU/product name on the SKU tab, plus
+        campaign/ad-set/ad name on the other three (placeholder text
+        changes per level so it's clear what's actually searched).
+        Client-side substring filter (case-insensitive, matching the same
+        pattern `CampaignTable`/`ShopifyProductTable` already use)
+        applied before sort, not a server round-trip. Verified live:
+        "orilamp" matches on Product Name across multiple SKU rows;
+        "058" matches on SKU alone, correctly narrowing to one row.
 
 ## Structure
 

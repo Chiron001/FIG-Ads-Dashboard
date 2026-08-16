@@ -211,12 +211,33 @@ const COLUMNS: Column[] = [
   },
 ];
 
+const SEARCH_PLACEHOLDER: Record<Level, string> = {
+  campaign: "Search campaign…",
+  adSet: "Search campaign or ad set…",
+  ad: "Search campaign, ad set, ad, or SKU…",
+  sku: "Search SKU or product name…",
+};
+
 const LEVEL_OPTIONS: { value: Level; label: string }[] = [
   { value: "campaign", label: "Campaign" },
   { value: "adSet", label: "Ad Set" },
   { value: "ad", label: "Ad" },
   { value: "sku", label: "SKU (true ROAS)" },
 ];
+
+/** Which text fields "contains" search checks, per level -- SKU and
+ * Product Name are always included where they exist (search box works
+ * "by SKU or Name of the product", per request), plus whatever name
+ * column(s) that level actually shows. */
+function matchesSearch(row: AnyRow, level: Level, term: string): boolean {
+  if (!term) return true;
+  const haystacks: (string | null | undefined)[] = [];
+  if ("campaignName" in row) haystacks.push(row.campaignName, row.campaignId);
+  if ("adSetName" in row) haystacks.push(row.adSetName, row.adSetId);
+  if (level === "ad") haystacks.push((row as AdRowFlat).adName, (row as AdRowFlat).adId, (row as AdRowFlat).sku);
+  if (level === "sku") haystacks.push((row as SkuGroupRowFlat).sku, (row as SkuGroupRowFlat).productTitle);
+  return haystacks.some((h) => h?.toLowerCase().includes(term));
+}
 
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
   const aNull = av == null;
@@ -233,6 +254,7 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [level, setLevel] = useState<Level>("campaign");
   const [onlyMatched, setOnlyMatched] = useState(false);
+  const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -288,10 +310,12 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
   }, [data, level, onlyMatched]);
 
   const sorted = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const filtered = term ? rows.filter((r) => matchesSearch(r, level, term)) : rows;
     const col = COLUMNS.find((c) => c.key === sortKey && c.levels.includes(level));
-    if (!col) return rows;
-    return [...rows].sort((a, b) => compareValues(col.sortValue(a), col.sortValue(b), sortDir));
-  }, [rows, sortKey, sortDir, level]);
+    if (!col) return filtered;
+    return [...filtered].sort((a, b) => compareValues(col.sortValue(a), col.sortValue(b), sortDir));
+  }, [rows, sortKey, sortDir, level, search]);
 
   function toggleSort(key: string) {
     if (key === sortKey) {
@@ -321,12 +345,21 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
             </button>
           ))}
         </div>
-        {level !== "sku" && (
-          <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
-            <input type="checkbox" checked={onlyMatched} onChange={(e) => setOnlyMatched(e.target.checked)} className="accent-platform-meta" />
-            Only show tagged {level === "campaign" ? "campaigns" : level === "adSet" ? "ad sets" : "ads"}
-          </label>
-        )}
+        <div className="flex items-center gap-3">
+          {level !== "sku" && (
+            <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
+              <input type="checkbox" checked={onlyMatched} onChange={(e) => setOnlyMatched(e.target.checked)} className="accent-platform-meta" />
+              Only show tagged {level === "campaign" ? "campaigns" : level === "adSet" ? "ad sets" : "ads"}
+            </label>
+          )}
+          <input
+            type="text"
+            placeholder={SEARCH_PLACEHOLDER[level]}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
+          />
+        </div>
       </div>
 
       <p className="text-xs text-ink-muted">
