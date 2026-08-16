@@ -16,7 +16,7 @@
     "shopify:test": "tsx src/scripts/test-shopify-connector.ts",
     "shopify:backfill": "tsx src/scripts/shopify-backfill.ts",
     "backfill": "tsx src/scripts/backfill.ts",
-    "test": "tsx --test src/stats/*.test.ts src/util/*.test.ts src/etl/*.test.ts"
+    "test": "tsx --test src/stats/*.test.ts src/util/*.test.ts src/etl/*.test.ts src/connectors/*.test.ts"
   },
   "dependencies": {
     "@fig/shared": "*",

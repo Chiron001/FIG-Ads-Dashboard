@@ -19,6 +19,8 @@ const COLUMNS: Column[] = [
   { key: "revenue", label: "Revenue", align: "right", format: (r) => formatCurrency(r.revenue) },
   { key: "sessions", label: "Sessions", align: "right", format: (r) => formatNumber(r.sessions) },
   { key: "cvr", label: "CVR", align: "right", format: (r) => formatPercent(r.cvr) },
+  { key: "googleSessions", label: "Google Sessions", align: "right", format: (r) => formatNumber(r.googleSessions) },
+  { key: "metaSessions", label: "Meta Sessions", align: "right", format: (r) => formatNumber(r.metaSessions) },
 ];
 
 interface Props {

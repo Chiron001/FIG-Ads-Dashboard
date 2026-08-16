@@ -103,6 +103,14 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         <KpiTile label="Discounts" value={formatCurrency(summary?.discounts)} accent={SHOPIFY_COLOR} />
         <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" />
         <KpiTile label="CVR" value={formatPercent(summary?.cvr)} accent={SHOPIFY_COLOR} sublabel="units sold / sessions" />
+        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" />
+        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" />
+      </div>
+
+      <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-ink-muted">
+        Google/Meta session splits are classified from each session's utm_source tag (Shopify Analytics) — directional, not a platform-verified
+        attribution. Real-world utm_source values are messy (placements, influencer tools, etc.); unrecognized values fall into neither bucket rather
+        than being guessed.
       </div>
 
       <ShopifyProductTable products={products} />

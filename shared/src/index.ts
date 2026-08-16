@@ -273,6 +273,12 @@ export interface ShopifyOrderSummary {
   sessions: number | null;
   /** unitsSold / sessions -- null if sessions is null or 0. */
   cvr: number | null;
+  /** Site-wide sessions (all pages, not just /products/) whose utm_source
+   * classifies as Google -- see classifyUtmSource in the Shopify connector.
+   * Null if the ShopifyQL call failed. */
+  googleSessions: number | null;
+  /** Same, classified as Meta. */
+  metaSessions: number | null;
 }
 
 export interface ShopifySummaryResponse {
@@ -297,6 +303,14 @@ export interface ShopifyProductRow {
   sessions: number | null;
   /** unitsSold / sessions -- null if sessions is null or 0. */
   cvr: number | null;
+  /** This product's landing-page sessions whose utm_source classifies as
+   * Google (see classifyUtmSource in the Shopify connector). Null if
+   * productHandle is null or the ShopifyQL call failed. Directional, not
+   * exact -- utm_source is self-reported by the traffic source, not a
+   * platform-verified attribution. */
+  googleSessions: number | null;
+  /** Same, classified as Meta. */
+  metaSessions: number | null;
 }
 
 export interface ShopifyProductsResponse {

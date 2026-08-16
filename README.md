@@ -394,6 +394,47 @@ Build proceeds phase by phase per the project spec, committing after each.
         column updating correctly; SKU tab shows Total (7) with Ads/
         Campaigns correctly "—" (not summed) and a real weighted Website
         ROAS (671.27x) across all matched SKUs.
+- [x] **Shopify Sessions by ad platform (Google vs Meta), via `utm_source`.**
+      User asked whether to connect GA4 to see per-product landing-page
+      sessions split by ad platform — investigated live first: GA4 would
+      need a new connector, service-account credentials, and an
+      already-tracking property; Shopify Analytics already carries this via
+      the `utm_source` ShopifyQL dimension on the existing connection, so
+      built that instead (GA4 not connected).
+      - `classifyUtmSource()` (`server/src/connectors/shopify.ts`) buckets
+        raw utm_source values into `google` / `meta` / `other`, derived from
+        this store's real observed values (live-queried): Meta's
+        dynamic/multi-placement campaigns auto-tag utm_source with the
+        *placement*, not one constant — `MetaAds`, `facebook`,
+        `Instagram_Reels`, `Facebook_Mobile_Feed`, `ig`, `Threads_Feed`, and
+        a dozen more all mean Meta; Google shows up as `google` or the
+        shorthand `g`. Everything else (`kwikengage`, `chatgpt.com`,
+        `wishlink`, null/direct, …) is a different channel entirely, not
+        "unclassified" Meta/Google — bucketed `other`, never guessed.
+        5 regression tests (`shopify.test.ts`) pin the classifier against
+        every real value seen live.
+      - **Row-cap-safe by construction.** A single `GROUP BY
+        landing_page_path, utm_source` query blows past ShopifyQL's
+        1000-row cap even over a 7-day window (confirmed live) — the long
+        tail of one-off utm_source values multiplies row count. Fixed by
+        filtering to one platform *before* grouping (`fetchTotalSessionsByPlatform`
+        / `fetchProductSessionsByPlatform`, two parallel queries each with a
+        WHERE fragment mirroring `classifyUtmSource`), which collapses row
+        count back down to the size of the product catalog — confirmed
+        live: 395 rows (Meta) / 178 rows (Google) over a 90-day range,
+        vs. 1000 (capped) for the combined query even at 7 days.
+      - Site-wide `googleSessions`/`metaSessions` added to
+        `ShopifyOrderSummary` (two new KPI tiles) and per-product
+        `googleSessions`/`metaSessions` added to `ShopifyProductRow` (two
+        new sortable columns on the Products table) — same
+        graceful-degradation pattern as the existing `sessions`/`cvr`
+        fields (ShopifyQL failure → null → "—", rest of the page still
+        renders). A caveat banner in the UI states this is
+        utm_source-classified, not platform-verified attribution.
+      - Verified live (30-day range): site-wide 1,26,877 sessions splits to
+        10,322 Google / 73,426 Meta; per-product rows sane and additive
+        (e.g. Wavy Floor Lamp - Crimson Red: 8,488 total → 294 Google /
+        7,087 Meta), confirmed via Playwright with zero console errors.
 
 ## Structure
 

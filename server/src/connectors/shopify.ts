@@ -163,6 +163,39 @@ function extractProductHandle(landingPagePath: string): string | null {
   return match ? match[1] : null;
 }
 
+/** Classifies a raw ShopifyQL utm_source value into an ad platform bucket.
+ * Real observed values on this store are messy -- Meta's dynamic/multi-
+ * placement campaigns auto-tag utm_source with the placement itself
+ * ("MetaAds", "facebook", "Instagram_Reels", "Facebook_Mobile_Feed", "ig",
+ * "Threads_Feed", ...) rather than a single constant, and Google shows up as
+ * either "google" or the shorthand "g". Everything else (kwikengage,
+ * chatgpt.com, wishlink, null/direct, ...) is a different channel entirely,
+ * not "unclassified Meta/Google" -- bucketed as "other" rather than guessed.
+ * This is the single source of truth for the bucketing; the WHERE-clause
+ * fragments below must stay in sync with it (kept adjacent on purpose). */
+export type UtmPlatformBucket = "google" | "meta" | "other";
+
+export function classifyUtmSource(raw: string | null): UtmPlatformBucket | null {
+  if (!raw) return null;
+  const s = raw.toLowerCase();
+  if (s === "g" || s.includes("google")) return "google";
+  if (s === "ig" || s === "fb" || s.includes("facebook") || s.includes("instagram") || s.includes("meta") || s.includes("threads")) {
+    return "meta";
+  }
+  return "other";
+}
+
+// Deliberately over-inclusive ShopifyQL WHERE fragments mirroring
+// classifyUtmSource above -- pre-filtering server-side keeps each platform's
+// query well under ShopifyQL's 1000-row cap (a combined GROUP BY
+// landing_page_path, utm_source query blows past that cap even over a
+// 7-day window, since the long tail of one-off utm_source values multiplies
+// row count; filtering to one platform first collapses that back down to
+// the size of the product catalog, confirmed live).
+const GOOGLE_UTM_WHERE = "(utm_source = 'g' OR utm_source CONTAINS 'google')";
+const META_UTM_WHERE =
+  "(utm_source CONTAINS 'facebook' OR utm_source CONTAINS 'instagram' OR utm_source CONTAINS 'meta' OR utm_source CONTAINS 'threads' OR utm_source = 'ig' OR utm_source = 'fb')";
+
 const MAX_RETRIES = 5;
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -264,6 +297,50 @@ export class ShopifyConnector {
       byHandle.set(handle, (byHandle.get(handle) ?? 0) + Number(row.sessions ?? 0));
     }
     return byHandle;
+  }
+
+  /** Site-wide session totals for the range, split into Google-attributed
+   * and Meta-attributed via utm_source (see classifyUtmSource). Two
+   * ungrouped queries -> one row each, no truncation risk. */
+  async fetchTotalSessionsByPlatform(from: string, to: string): Promise<{ google: number; meta: number }> {
+    const [googleRows, metaRows] = await Promise.all([
+      shopifyQL(`FROM sessions SHOW sessions WHERE ${GOOGLE_UTM_WHERE} SINCE ${from} UNTIL ${to}`),
+      shopifyQL(`FROM sessions SHOW sessions WHERE ${META_UTM_WHERE} SINCE ${from} UNTIL ${to}`),
+    ]);
+    return {
+      google: Number(googleRows[0]?.sessions ?? 0),
+      meta: Number(metaRows[0]?.sessions ?? 0),
+    };
+  }
+
+  /** Per-product session counts for the range, split by ad platform via
+   * utm_source (see classifyUtmSource), keyed by product handle. Filtering
+   * to one platform before GROUP BY landing_page_path keeps each query's
+   * row count bounded by the product catalog rather than the utm_source
+   * long tail -- see the WHERE-fragment comment above. */
+  async fetchProductSessionsByPlatform(from: string, to: string): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
+    const buildMap = (rows: Record<string, string>[]) => {
+      const byHandle = new Map<string, number>();
+      for (const row of rows) {
+        const handle = extractProductHandle(row.landing_page_path ?? "");
+        if (!handle) continue;
+        byHandle.set(handle, (byHandle.get(handle) ?? 0) + Number(row.sessions ?? 0));
+      }
+      return byHandle;
+    };
+
+    const [googleRows, metaRows] = await Promise.all([
+      shopifyQL(
+        `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' AND ${GOOGLE_UTM_WHERE} ` +
+          `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+      ),
+      shopifyQL(
+        `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' AND ${META_UTM_WHERE} ` +
+          `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+      ),
+    ]);
+
+    return { google: buildMap(googleRows), meta: buildMap(metaRows) };
   }
 
   normalize(orders: ShopifyRawOrder[]): { orders: CanonicalShopifyOrder[]; lineItems: CanonicalShopifyLineItem[] } {

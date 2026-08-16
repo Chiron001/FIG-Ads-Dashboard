@@ -42,6 +42,29 @@ async function fetchProductSessionsSafe(from: string, to: string): Promise<Map<s
   }
 }
 
+async function fetchTotalSessionsByPlatformSafe(from: string, to: string): Promise<{ google: number | null; meta: number | null }> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchTotalSessionsByPlatform(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchTotalSessionsByPlatform failed, returning null:", err);
+    return { google: null, meta: null };
+  }
+}
+
+async function fetchProductSessionsByPlatformSafe(
+  from: string,
+  to: string
+): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchProductSessionsByPlatform(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchProductSessionsByPlatform failed, returning empty maps:", err);
+    return { google: new Map(), meta: new Map() };
+  }
+}
+
 export const shopifyRouter = Router();
 
 function parseDateRange(query: Record<string, unknown>): { from: string; to: string } | null {
@@ -111,7 +134,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows: orderRows }, { rows: lineItemRows }, sessions] = await Promise.all([
+    const [{ rows: orderRows }, { rows: lineItemRows }, sessions, sessionsByPlatform] = await Promise.all([
       pool.query(
         `select count(*)::float8 as orders,
                 coalesce(sum(total_price), 0)::float8 as revenue,
@@ -127,6 +150,7 @@ shopifyRouter.get(
         [range.from, range.to]
       ),
       fetchTotalSessionsSafe(range.from, range.to),
+      fetchTotalSessionsByPlatformSafe(range.from, range.to),
     ]);
     const orderRow = orderRows[0];
     const unitsSold = lineItemRows[0].units_sold;
@@ -139,6 +163,8 @@ shopifyRouter.get(
       unitsSold,
       sessions,
       cvr: safeDivide(unitsSold, sessions),
+      googleSessions: sessionsByPlatform.google,
+      metaSessions: sessionsByPlatform.meta,
     };
 
     const response: ShopifySummaryResponse = { from: range.from, to: range.to, summary };
@@ -154,7 +180,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, sessionsByHandle] = await Promise.all([
+    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform] = await Promise.all([
       pool.query(
         `select
            product_id,
@@ -173,10 +199,13 @@ shopifyRouter.get(
         [range.from, range.to]
       ),
       fetchProductSessionsSafe(range.from, range.to),
+      fetchProductSessionsByPlatformSafe(range.from, range.to),
     ]);
 
     const products: ShopifyProductRow[] = rows.map((r) => {
       const sessions = r.product_handle ? (sessionsByHandle.get(r.product_handle) ?? null) : null;
+      const googleSessions = r.product_handle ? (sessionsByHandleByPlatform.google.get(r.product_handle) ?? null) : null;
+      const metaSessions = r.product_handle ? (sessionsByHandleByPlatform.meta.get(r.product_handle) ?? null) : null;
       return {
         productId: r.product_id ?? "unknown",
         productHandle: r.product_handle,
@@ -189,6 +218,8 @@ shopifyRouter.get(
         orders: r.orders,
         sessions,
         cvr: safeDivide(r.units_sold, sessions),
+        googleSessions,
+        metaSessions,
       };
     });
 
