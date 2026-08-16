@@ -23,6 +23,8 @@ import type {
   MetaCreativePerformanceResponse,
   SettingsResponse,
   AdditionalCost,
+  ProjectionResponse,
+  ProjectionUpdateEntry,
 } from "@fig/shared";
 import { getStoredPassword } from "./sitePassword";
 
@@ -216,4 +218,14 @@ export function fetchSettings(): Promise<SettingsResponse> {
 
 export function updateSettings(body: { cogsRate?: number; additionalCosts?: AdditionalCost[] }): Promise<SettingsResponse> {
   return patchJSON(`/settings`, body);
+}
+
+// --- Projection Sheet (monthly unit targets vs. actual pace) ---------------
+
+export function fetchProjection(): Promise<ProjectionResponse> {
+  return getJSON(`/projection`);
+}
+
+export function updateProjection(updates: ProjectionUpdateEntry[]): Promise<{ ok: boolean }> {
+  return patchJSON(`/projection`, { updates });
 }

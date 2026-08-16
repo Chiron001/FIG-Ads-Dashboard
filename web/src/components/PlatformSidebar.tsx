@@ -9,15 +9,16 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
  * (not an ad platform -- no spend/campaigns, not in the shared Platform
  * union), plus Meta's SKU Attribution and Creative Performance sub-views
  * (nested under Meta Ads in the nav, not platforms of their own), plus
- * Shopify's Product Quadrants sub-view (nested under Shopify the same way),
- * plus Settings (app-wide config, its own top-level group -- not tied to
- * any one platform or Shopify). */
+ * Shopify's Product Quadrants and Projection Sheet sub-views (nested under
+ * Shopify the same way), plus Settings (app-wide config, its own top-level
+ * group -- not tied to any one platform or Shopify). */
 export type SidebarSelection =
   | Platform
   | "shopify"
   | "meta-sku-attribution"
   | "meta-creative-performance"
   | "shopify-product-quadrants"
+  | "shopify-projection-sheet"
   | "settings";
 
 const SHOPIFY_COLOR = "#95BF47";
@@ -57,6 +58,16 @@ function QuadrantIcon({ size }: { size: number }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       <rect x="2" y="2" width="12" height="12" rx="1.3" stroke="currentColor" strokeWidth="1.3" />
       <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.1" />
+    </svg>
+  );
+}
+
+function TargetIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="8" cy="8" r="0.9" fill="currentColor" />
     </svg>
   );
 }
@@ -277,6 +288,38 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                 <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />
               )}
               <span className="truncate">↳ Product Quadrants</span>
+            </button>
+          )}
+
+          {/* Monthly unit-target planning against live Shopify catalog +
+              session/CVR pace -- same nesting as Product Quadrants above. */}
+          {collapsed ? (
+            <div className="mt-0.5 flex flex-col items-center gap-0.5">
+              <button
+                type="button"
+                title="Shopify — Projection Sheet"
+                onClick={() => handleChange("shopify-projection-sheet")}
+                className={`rounded-md p-1.5 transition-colors ${
+                  active === "shopify-projection-sheet" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                }`}
+              >
+                <TargetIcon size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleChange("shopify-projection-sheet")}
+              className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                active === "shopify-projection-sheet"
+                  ? "bg-surface-2 text-ink-primary"
+                  : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+              }`}
+            >
+              {active === "shopify-projection-sheet" && (
+                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />
+              )}
+              <span className="truncate">↳ Projection Sheet</span>
             </button>
           )}
 

@@ -852,3 +852,81 @@ export interface SettingsResponse {
   settings: AppSettings;
   integrations: IntegrationStatus[];
 }
+
+// --- Projection Sheet (Shopify -> ↳ Projection Sheet) -----------------------
+//
+// Monthly planning tool: set a Unit Target + Price per product, see the
+// traffic/spend that target implies, and track pace against it this month.
+// Always "this month" (server's current IST date) -- no month picker yet,
+// though the DB schema (db/migrations/0009_product_targets.sql) is already
+// keyed by month for when one gets added. Every field below except
+// unitTarget/price is computed live on every request, never stored.
+
+export type ProjectionInsightVerdict = "on_track" | "increase_sessions" | "review_ads" | "behind_and_low_traffic" | "no_target";
+
+export interface ProjectionInsight {
+  verdict: ProjectionInsightVerdict;
+  message: string;
+}
+
+export interface ProjectionRow {
+  productId: string;
+  productHandle: string | null;
+  title: string;
+  /** User-entered, from product_targets -- null until set. */
+  unitTarget: number | null;
+  /** User-entered, from product_targets -- null until set. */
+  price: number | null;
+  /** unitTarget * price -- null if either input is unset. */
+  targetRevenue: number | null;
+  /** unitTarget / previousMonthCvr -- null if unitTarget or CVR is unset/null. */
+  requiredTraffic: number | null;
+  /** Meta catalog CPM (spend / impressions * 1000) for this product, previous month. Null if unmatched/no impressions. */
+  cpm: number | null;
+  /** (1000 / cpm) * requiredTraffic * 0.8 -- null if cpm or requiredTraffic is null. */
+  minAdSpendRequired: number | null;
+  /** unitTarget / days in the current month. */
+  plannedDrr: number | null;
+  /** mtdUnitsSold / day-of-month (today's date number, 1-indexed). */
+  currentDrr: number | null;
+  /** currentDrr * days in the current month -- the pace-extrapolated month-end unit count. */
+  projectedUnitsMonthEnd: number | null;
+  mtdUnitsSold: number;
+  /** Site-wide, all sources -- same figure as mtdTotalSessions below (shown
+   * once here near units, once again after the channel breakdown, matching
+   * the requested column list). */
+  mtdTotalSessionsEarly: number | null;
+  /** previousMonthSessions / previousMonthUnitsSold -- units per session,
+   * i.e. the conventional CVR (confirmed against the attached spreadsheet's
+   * own numbers, which used this direction, not sessions/units as the
+   * request text literally said). Null if either side is 0/null. */
+  previousMonthCvr: number | null;
+  currentMonthCvr: number | null;
+  mtdMetaSessions: number | null;
+  mtdGoogleSessions: number | null;
+  /** mtdTotalSessions - meta - google -- sessions from other/unclassified sources. Null if mtdTotalSessions is null. */
+  mtdRestSessions: number | null;
+  mtdTotalSessions: number | null;
+  /** mtdMetaSessions / mtdTotalSessions. Null if mtdTotalSessions is null/0. */
+  mtdMetaSessionsSharePct: number | null;
+  /** (mtdTotalSessions / day-of-month) * days in the current month -- the pace-extrapolated month-end session count. */
+  projectedSessionsMonthEnd: number | null;
+  insight: ProjectionInsight;
+}
+
+export interface ProjectionResponse {
+  month: string; // "YYYY-MM"
+  daysInMonth: number;
+  dayOfMonth: number;
+  rows: ProjectionRow[];
+}
+
+export interface ProjectionUpdateEntry {
+  productId: string;
+  unitTarget: number | null;
+  price: number | null;
+}
+
+export interface ProjectionUpdateRequest {
+  updates: ProjectionUpdateEntry[];
+}

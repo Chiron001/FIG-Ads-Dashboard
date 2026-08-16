@@ -22,6 +22,23 @@ const numberCompact = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 1,
 });
 
+// CPM/unit-economics figures (Projection Sheet) need real precision --
+// formatCurrency's 0dp rounds a ₹56.17 CPM down to "₹56", which is
+// misleading at that scale. Same en-IN grouping, just 2dp kept.
+const currencyPrecise = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+// Fractional units (DRR, e.g. "4.8 units/day") -- a plain number formatter
+// with a fixed 1dp, unlike formatNumber's 0dp default.
+const numberOneDecimal = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
 /** "N/A" for null/undefined/NaN rather than a misleading 0 or "NaN" -- matches
  * computeDerivedMetrics' null-on-zero-denominator contract. Deliberately not
  * an em dash: reads as a written report, not a generated table. */
@@ -35,6 +52,16 @@ export function formatCurrency(value: number | null | undefined, compact = false
 export function formatNumber(value: number | null | undefined, compact = false): string {
   if (value == null || Number.isNaN(value)) return EMPTY;
   return (compact ? numberCompact : numberFull).format(value);
+}
+
+export function formatCurrencyPrecise(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return EMPTY;
+  return currencyPrecise.format(value);
+}
+
+export function formatNumberOneDecimal(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return EMPTY;
+  return numberOneDecimal.format(value);
 }
 
 /** decimals: CTR/CVR/ACOS use 2dp; % of Spend/Revenue use 1dp per the

@@ -109,6 +109,33 @@ const ORDERS_QUERY = `
   }
 `;
 
+// --- live catalog (Projection Sheet's product list) -------------------------
+//
+// Unlike orders/line-items, the catalog isn't synced into Postgres at all --
+// fetched live per request instead, same "not worth a storage layer" call as
+// sessions above. Needed so the Projection Sheet can list every ACTIVE
+// product to plan against, not just ones that happen to already have sales
+// history in fact_shopify_line_items (a brand-new or slow-moving product
+// still needs a row to set a target on).
+const PRODUCTS_QUERY = `
+  query Products($cursor: String) {
+    products(first: 100, after: $cursor, query: "status:active", sortKey: TITLE) {
+      pageInfo { hasNextPage endCursor }
+      edges { node { id title handle } }
+    }
+  }
+`;
+
+export interface CanonicalShopifyProduct {
+  productId: string; // gid://shopify/Product/{id} -- same shape fact_shopify_line_items.product_id stores
+  title: string;
+  handle: string;
+}
+
+interface ProductsQueryResult {
+  products: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; edges: { node: { id: string; title: string; handle: string } }[] };
+}
+
 interface GraphQLResponse<T> {
   data?: T;
   errors?: { message: string; extensions?: { code?: string } }[];
@@ -265,6 +292,22 @@ export class ShopifyConnector {
     } while (cursor);
 
     return orders;
+  }
+
+  /** Every ACTIVE product in the catalog, live -- not filtered to ones with
+   * sales history, since the Projection Sheet needs to offer a target on a
+   * brand-new or slow-moving product too. */
+  async fetchAllActiveProducts(): Promise<CanonicalShopifyProduct[]> {
+    const products: CanonicalShopifyProduct[] = [];
+    let cursor: string | null = null;
+
+    do {
+      const data: ProductsQueryResult = await shopifyGraphQL<ProductsQueryResult>(PRODUCTS_QUERY, { cursor });
+      products.push(...data.products.edges.map((e) => ({ productId: e.node.id, title: e.node.title, handle: e.node.handle })));
+      cursor = data.products.pageInfo.hasNextPage ? data.products.pageInfo.endCursor : null;
+    } while (cursor);
+
+    return products;
   }
 
   /** True site-wide session total for the range (ungrouped ShopifyQL query

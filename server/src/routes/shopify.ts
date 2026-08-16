@@ -326,15 +326,17 @@ shopifyRouter.get(
 const META_PRODUCT_ITEM_PATTERN = /^\/products\/([^/#?]+)/;
 const GOOGLE_PRODUCT_ITEM_PATTERN = /^shopify_zz_(\d+)_(\d+)$/;
 
-interface AdMetric {
+export interface AdMetric {
   spend: number;
   impressions: number;
 }
 
 /** Ad spend/impressions from fact_shopping_product_performance, decoded and
  * re-keyed to product-level Shopify identifiers -- Google by product gid
- * (variant dropped), Meta by product handle. */
-async function fetchAdMetricsByProductKeys(
+ * (variant dropped), Meta by product handle. Exported -- routes/projection.ts
+ * reuses it for the Projection Sheet's per-product CPM (Meta catalog spend/
+ * impressions, previous month) rather than re-deriving the same decode. */
+export async function fetchAdMetricsByProductKeys(
   from: string,
   to: string
 ): Promise<{ googleByProductGid: Map<string, AdMetric>; metaByHandle: Map<string, AdMetric> }> {

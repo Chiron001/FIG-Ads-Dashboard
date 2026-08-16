@@ -12,6 +12,7 @@ import { ShopifySection } from "./components/ShopifySection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
 import { ShopifyProductQuadrantsSection } from "./components/ShopifyProductQuadrantsSection";
+import { ProjectionSheetSection } from "./components/ProjectionSheetSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { SpendFlowBand } from "./components/SpendFlowBand";
 import { CommandPalette } from "./components/CommandPalette";
@@ -98,11 +99,12 @@ function App() {
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
   const isShopifyProductQuadrants = activeSelection === "shopify-product-quadrants";
+  const isShopifyProjectionSheet = activeSelection === "shopify-projection-sheet";
   const isSettings = activeSelection === "settings";
   const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
   const lastSync = isSettings
     ? null // app-wide config, not synced data -- no "last synced" figure applies
-    : isShopify || isShopifyProductQuadrants
+    : isShopify || isShopifyProductQuadrants || isShopifyProjectionSheet
       ? (shopifyStatus?.lastSync ?? null)
       : isMetaSubView
         ? // Derived entirely from Meta + Shopify's already-synced data -- no
@@ -124,18 +126,20 @@ function App() {
   // on every ad-platform page (using the same global range), hidden on
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
   // lens on Meta specifically, one platform of the four this band spans).
-  const showSpendFlow = !isShopify && !isMetaSubView && !isShopifyProductQuadrants && !isSettings;
+  const showSpendFlow = !isShopify && !isMetaSubView && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
   const title = isSettings
     ? "Settings"
     : isShopify
       ? "Shopify"
       : isShopifyProductQuadrants
         ? "Shopify — Product Quadrants"
-        : isMetaSkuAttribution
-          ? "Meta Ads — SKU Attribution"
-          : isMetaCreativePerformance
-            ? "Meta Ads — Creative Performance"
-            : PLATFORM_LABELS[activeSelection];
+        : isShopifyProjectionSheet
+          ? "Shopify — Projection Sheet"
+          : isMetaSkuAttribution
+            ? "Meta Ads — SKU Attribution"
+            : isMetaCreativePerformance
+              ? "Meta Ads — Creative Performance"
+              : PLATFORM_LABELS[activeSelection];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -172,7 +176,7 @@ function App() {
             </div>
           )}
 
-          {!isShopify && !isShopifyProductQuadrants && !isSettings && <AttributionBanner />}
+          {!isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && <AttributionBanner />}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -209,6 +213,8 @@ function App() {
               refreshKey={refreshKey}
               targetRoas={targetRoas}
             />
+          ) : isShopifyProjectionSheet ? (
+            <ProjectionSheetSection key="shopify-projection-sheet" connected={shopifyStatus?.connected ?? false} />
           ) : isMetaSkuAttribution ? (
             <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : isMetaCreativePerformance ? (

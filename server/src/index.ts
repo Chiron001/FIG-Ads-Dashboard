@@ -10,6 +10,7 @@ import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
 import { metaCreativePerformanceRouter } from "./routes/metaCreativePerformance";
 import { settingsRouter } from "./routes/settings";
+import { projectionRouter } from "./routes/projection";
 import { authRouter } from "./routes/auth";
 import { siteAuthMiddleware } from "./middleware/siteAuth";
 import type { AppConfig, HealthStatus } from "@fig/shared";
@@ -43,6 +44,7 @@ app.use("/meta-sku-attribution", metaSkuAttributionRouter);
 app.use("/meta-creative-performance", metaCreativePerformanceRouter);
 app.use("/stats", statsRouter);
 app.use("/settings", settingsRouter);
+app.use("/projection", projectionRouter);
 
 function nowIST(): string {
   return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T");
