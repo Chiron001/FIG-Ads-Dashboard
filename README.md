@@ -896,6 +896,16 @@ Build proceeds phase by phase per the project spec, committing after each.
         494850, requiredTraffic=12150, plannedDrr=4.84, and an insight
         verdict matching the actual pace) before wiring the frontend to
         it; deployed frontend first, then backend, and confirmed live.
+      - **Follow-up**: Unit Target and Price can now also be one-click
+        filled instead of typed -- a "prev: N" hint under Unit Target sets
+        it to last month's actual units sold (`previousMonthUnitsSold`,
+        already computed for the CVR calc, now also exposed on the row);
+        a "shop: ₹N" hint under Price sets it to Shopify's live selling
+        price (new `shopifyPrice` field -- the catalog query now also
+        fetches `priceRangeV2.minVariantPrice` per product). A 3-way
+        filter (All / Complete / Missing Target/Price, each with a live
+        count) sits above the table to hide products that already have
+        both fields set, or show only the ones still missing something.
 
 ## Structure
 
