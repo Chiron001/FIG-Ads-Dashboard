@@ -69,6 +69,74 @@ async function fetchProductSessionsByPlatformSafe(
   }
 }
 
+async function fetchProductEngagementSafe(from: string, to: string): Promise<Map<string, { atc: number; bounceRate: number | null }>> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchProductEngagement(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchProductEngagement failed, returning empty map:", err);
+    return new Map();
+  }
+}
+
+// Same token as metaSkuAttribution.ts's SKU_TOKEN_PATTERN/extractSkuToken --
+// duplicated (both private to their own route file) rather than imported,
+// same convention as the product-item-ID patterns below.
+const SKU_TOKEN_PATTERN = /FIG-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/i;
+
+function extractSkuToken(adName: string | null): string | null {
+  if (!adName) return null;
+  const match = adName.match(SKU_TOKEN_PATTERN);
+  return match ? match[0].toUpperCase() : null;
+}
+
+/** Meta ad spend summed per SKU-tag token extracted from the ad's name --
+ * the same "true" per-token spend metaSkuAttribution.ts's skuGroups uses,
+ * recomputed here (not imported -- that route returns its full drill-down
+ * shape, more than this needs) so this file can match it against Shopify
+ * products below. */
+async function fetchSkuAttributedSpendByToken(from: string, to: string): Promise<Map<string, number>> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select ad_id, max(ad_name) as ad_name, coalesce(sum(spend), 0)::float8 as spend
+     from fact_ad_creative_performance
+     where date between $1 and $2 and platform::text = 'meta'
+     group by ad_id`,
+    [from, to]
+  );
+  const byToken = new Map<string, number>();
+  for (const r of rows) {
+    const token = extractSkuToken(r.ad_name);
+    if (!token) continue;
+    byToken.set(token, (byToken.get(token) ?? 0) + r.spend);
+  }
+  return byToken;
+}
+
+/** A token is a prefix of the real SKU it was extracted from (see
+ * extractSkuToken), and can therefore prefix-match more than one Shopify
+ * product's SKUs -- when it does, this attributes the token's full spend to
+ * EVERY matching product, same "directional, not exact" caveat already
+ * shown on Meta's own SKU Attribution page for the identical reason (one
+ * ad's spend counted once per SKU it's tagged for, not split). */
+function skuAttributedSpendForProduct(skus: string[], tokenSpend: Map<string, number>): number {
+  let total = 0;
+  for (const [token, spend] of tokenSpend) {
+    if (skus.some((sku) => sku.startsWith(token))) total += spend;
+  }
+  return total;
+}
+
+// COGS assumption (spec: "consider COGS as 35% of Selling price") -- applied
+// uniformly since neither Shopify nor either ad platform exposes real
+// per-product cost data. Gross profit / POAS below are therefore modeled
+// figures, not accounting-grade ones; the frontend labels them as such.
+// Declared here (used by both /products and /product-quadrants below) --
+// `const` isn't hoisted the way `function` is, but every route handler that
+// closes over it only runs at request time, well after this module has
+// finished loading, so the ordering is safe either way.
+const COGS_RATE = 0.35;
+
 export const shopifyRouter = Router();
 
 function parseDateRange(query: Record<string, unknown>): { from: string; to: string } | null {
@@ -184,12 +252,13 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform] = await Promise.all([
+    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform, adMetrics, skuTokenSpend, engagementByHandle] = await Promise.all([
       pool.query(
         `select
            product_id,
            max(product_handle) as product_handle,
            max(sku) as sku,
+           array_agg(distinct upper(sku)) filter (where sku is not null) as skus,
            max(title) as title,
            max(product_type) as product_type,
            max(vendor) as vendor,
@@ -204,12 +273,24 @@ shopifyRouter.get(
       ),
       fetchProductSessionsSafe(range.from, range.to),
       fetchProductSessionsByPlatformSafe(range.from, range.to),
+      fetchAdMetricsByProductKeys(range.from, range.to),
+      fetchSkuAttributedSpendByToken(range.from, range.to),
+      fetchProductEngagementSafe(range.from, range.to),
     ]);
 
     const products: ShopifyProductRow[] = rows.map((r) => {
       const sessions = r.product_handle ? (sessionsByHandle.get(r.product_handle) ?? null) : null;
       const googleSessions = r.product_handle ? (sessionsByHandleByPlatform.google.get(r.product_handle) ?? null) : null;
       const metaSessions = r.product_handle ? (sessionsByHandleByPlatform.meta.get(r.product_handle) ?? null) : null;
+
+      const skus: string[] = r.skus ?? [];
+      const skuAttributedSpend = skuAttributedSpendForProduct(skus, skuTokenSpend);
+      const metaCatalogSpend = r.product_handle ? (adMetrics.metaByHandle.get(r.product_handle)?.spend ?? 0) : 0;
+      const adSpend = skuAttributedSpend + metaCatalogSpend;
+      const grossProfit = r.revenue * (1 - COGS_RATE);
+
+      const engagement = r.product_handle ? engagementByHandle.get(r.product_handle) : undefined;
+
       return {
         productId: r.product_id ?? "unknown",
         productHandle: r.product_handle,
@@ -224,6 +305,13 @@ shopifyRouter.get(
         cvr: safeDivide(r.units_sold, sessions),
         googleSessions,
         metaSessions,
+        skuAttributedSpend,
+        metaCatalogSpend,
+        adSpend,
+        roas: adSpend > 0 ? r.revenue / adSpend : null,
+        poas: adSpend > 0 ? grossProfit / adSpend : null,
+        atc: engagement?.atc ?? null,
+        bounceRate: engagement?.bounceRate ?? null,
       };
     });
 
@@ -245,12 +333,6 @@ shopifyRouter.get(
 // -- no separate numeric-id extraction needed on the Shopify side.
 const META_PRODUCT_ITEM_PATTERN = /^\/products\/([^/#?]+)/;
 const GOOGLE_PRODUCT_ITEM_PATTERN = /^shopify_zz_(\d+)_(\d+)$/;
-
-// COGS assumption (spec: "consider COGS as 35% of Selling price") -- applied
-// uniformly since neither Shopify nor either ad platform exposes real
-// per-product cost data. Gross profit / POAS below are therefore modeled
-// figures, not accounting-grade ones; the frontend labels them as such.
-const COGS_RATE = 0.35;
 
 interface AdMetric {
   spend: number;

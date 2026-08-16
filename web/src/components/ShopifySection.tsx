@@ -257,7 +257,11 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         <ParetoChart items={paretoItems} color={SHOPIFY_COLOR} unitLabel="products" valueFormatter={(v) => formatCurrency(v, true)} />
       </div>
 
-      <ShopifyProductTable products={products} comparisonProducts={comparisonMode !== "none" ? comparisonProducts : undefined} />
+      <ShopifyProductTable
+        products={products}
+        comparisonProducts={comparisonMode !== "none" ? comparisonProducts : undefined}
+        comparisonLabel={comparisonMode !== "none" ? COMPARISON_LABELS[comparisonMode] : undefined}
+      />
     </div>
   );
 }

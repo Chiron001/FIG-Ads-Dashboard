@@ -311,6 +311,37 @@ export interface ShopifyProductRow {
   googleSessions: number | null;
   /** Same, classified as Meta. */
   metaSessions: number | null;
+  /** Meta spend from ads whose NAME carries this product's SKU as a "FIG-..."
+   * tag (see metaSkuAttribution.ts's extractSkuToken) -- summed across every
+   * matching ad, regardless of campaign/ad set. 0 (not null) when no ad
+   * tagged this product this period. */
+  skuAttributedSpend: number;
+  /** Meta spend matched via the product CATALOG instead -- product_item_id
+   * decoded the same way as Products' Website ROAS (see metrics.ts's
+   * META_PRODUCT_ITEM_PATTERN), matched by product handle. A different
+   * Meta ad mechanism than the name-tag above (catalog/dynamic ads are
+   * auto-generated, not manually named), so the two are additive, not
+   * overlapping double-counts of the same spend. 0 (not null) if unmatched. */
+  metaCatalogSpend: number;
+  /** skuAttributedSpend + metaCatalogSpend -- this product's total known
+   * Meta ad spend across both matching mechanisms. */
+  adSpend: number;
+  /** revenue / adSpend -- null if adSpend is 0. */
+  roas: number | null;
+  /** Profit on Ad Spend = Gross Profit / adSpend, Gross Profit = revenue *
+   * 65% (COGS modeled at a flat 35% of selling price, same assumption as
+   * Product Quadrants -- no real per-product cost data exists). Null if
+   * adSpend is 0. */
+  poas: number | null;
+  /** Shopify Analytics "sessions_with_cart_additions" for this product's
+   * landing page (live, via ShopifyQL) -- sessions that added it to cart,
+   * not a raw add-to-cart event count. Null if productHandle is null or
+   * the ShopifyQL call failed. */
+  atc: number | null;
+  /** Shopify Analytics bounce_rate for this product's landing page (live,
+   * via ShopifyQL, already session-weighted server-side by Shopify -- not
+   * re-derived here). Null if productHandle is null or the call failed. */
+  bounceRate: number | null;
 }
 
 export interface ShopifyProductsResponse {

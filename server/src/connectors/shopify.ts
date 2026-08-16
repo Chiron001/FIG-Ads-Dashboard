@@ -343,6 +343,43 @@ export class ShopifyConnector {
     return { google: buildMap(googleRows), meta: buildMap(metaRows) };
   }
 
+  /** Per-product ATC (sessions that added it to cart) + bounce rate, keyed
+   * by product handle. Both confirmed live against this account's ShopifyQL
+   * schema -- "sessions_with_cart_additions" (a session count, additive
+   * across the raw landing-page-path rows that collapse into one handle)
+   * and "bounce_rate" (a rate Shopify itself computes per group, so
+   * combining multiple raw paths for the same handle needs a
+   * sessions-weighted average here, never a flat mean of two rates). Same
+   * 1000-row cap and /products/-path filter as fetchProductSessions. */
+  async fetchProductEngagement(from: string, to: string): Promise<Map<string, { atc: number; bounceRate: number | null }>> {
+    const rows = await shopifyQL(
+      `FROM sessions SHOW sessions, sessions_with_cart_additions, bounce_rate, landing_page_path ` +
+        `WHERE landing_page_path CONTAINS '/products/' GROUP BY landing_page_path ` +
+        `SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+    );
+
+    const byHandle = new Map<string, { sessions: number; atc: number; bounceRateWeightedSum: number }>();
+    for (const row of rows) {
+      const handle = extractProductHandle(row.landing_page_path ?? "");
+      if (!handle) continue;
+      const sessions = Number(row.sessions ?? 0);
+      const atc = Number(row.sessions_with_cart_additions ?? 0);
+      const bounceRate = Number(row.bounce_rate ?? 0);
+      const cur = byHandle.get(handle) ?? { sessions: 0, atc: 0, bounceRateWeightedSum: 0 };
+      byHandle.set(handle, {
+        sessions: cur.sessions + sessions,
+        atc: cur.atc + atc,
+        bounceRateWeightedSum: cur.bounceRateWeightedSum + bounceRate * sessions,
+      });
+    }
+
+    const result = new Map<string, { atc: number; bounceRate: number | null }>();
+    for (const [handle, v] of byHandle) {
+      result.set(handle, { atc: v.atc, bounceRate: v.sessions > 0 ? v.bounceRateWeightedSum / v.sessions : null });
+    }
+    return result;
+  }
+
   normalize(orders: ShopifyRawOrder[]): { orders: CanonicalShopifyOrder[]; lineItems: CanonicalShopifyLineItem[] } {
     const canonicalOrders: CanonicalShopifyOrder[] = [];
     const canonicalLineItems: CanonicalShopifyLineItem[] = [];
