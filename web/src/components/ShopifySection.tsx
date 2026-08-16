@@ -97,14 +97,14 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 ${loading ? "opacity-60" : ""}`}>
-        <KpiTile label="Orders" value={formatNumber(summary?.orders)} accent={SHOPIFY_COLOR} />
-        <KpiTile label="Revenue" value={formatCurrency(summary?.revenue)} accent={SHOPIFY_COLOR} />
-        <KpiTile label="AOV" value={formatCurrency(summary?.aov)} accent={SHOPIFY_COLOR} />
-        <KpiTile label="Discounts" value={formatCurrency(summary?.discounts)} accent={SHOPIFY_COLOR} />
-        <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" />
-        <KpiTile label="CVR" value={formatPercent(summary?.cvr)} accent={SHOPIFY_COLOR} sublabel="units sold / sessions" />
-        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" />
-        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" />
+        <KpiTile label="Orders" value={formatNumber(summary?.orders)} numeric={summary?.orders} numericFormat="number" accent={SHOPIFY_COLOR} staggerIndex={0} />
+        <KpiTile label="Revenue" value={formatCurrency(summary?.revenue)} numeric={summary?.revenue} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={1} />
+        <KpiTile label="AOV" value={formatCurrency(summary?.aov)} numeric={summary?.aov} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={2} />
+        <KpiTile label="Discounts" value={formatCurrency(summary?.discounts)} numeric={summary?.discounts} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={3} />
+        <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} numeric={summary?.sessions} numericFormat="number" accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" staggerIndex={4} />
+        <KpiTile label="CVR" value={formatPercent(summary?.cvr)} numeric={summary?.cvr} numericFormat="percent" accent={SHOPIFY_COLOR} sublabel="units sold / sessions" staggerIndex={5} />
+        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={6} />
+        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={7} />
       </div>
 
       <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-ink-muted">

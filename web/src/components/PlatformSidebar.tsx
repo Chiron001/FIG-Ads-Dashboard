@@ -18,19 +18,41 @@ interface Props {
   onChange: (selection: SidebarSelection) => void;
   connected: Record<Platform, boolean>;
   shopifyConnected: boolean;
+  /** Mobile-only: whether the sidebar is showing as an overlay drawer.
+   * Ignored at sm: and above, where the sidebar is always part of the
+   * static layout (collapsed/expanded via its own button instead). */
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
 // No localStorage per spec (React state only) -- collapse state is a
 // per-session UI preference, not data, so resetting on reload is fine.
-export function PlatformSidebar({ active, onChange, connected, shopifyConnected }: Props) {
+export function PlatformSidebar({ active, onChange, connected, shopifyConnected, mobileOpen, onMobileClose }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
+  // Picking a destination on mobile should also close the drawer -- it's
+  // an overlay there, not part of the static layout.
+  function handleChange(selection: SidebarSelection) {
+    onChange(selection);
+    onMobileClose();
+  }
+
   return (
-    <aside
-      className={`flex shrink-0 flex-col border-r border-border bg-surface-1 transition-[width] duration-200 ${
-        collapsed ? "w-16" : "w-60"
-      }`}
-    >
+    <>
+      {/* Backdrop -- mobile only, dismisses the drawer on tap outside it. */}
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={onMobileClose}
+          className="animate-fade-slide-in fixed inset-0 z-30 bg-black/60 sm:hidden"
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-border bg-surface-1 transition-[transform,width] duration-200 sm:static sm:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } ${collapsed ? "w-16" : "w-60"}`}
+      >
       <div className={`flex items-center border-b border-border ${collapsed ? "justify-center px-2 py-4" : "gap-2.5 px-4 py-4"}`}>
         <img src="/figliving-logo.png" alt="FIG Living" className="h-6 w-6 shrink-0 object-contain invert" />
         {!collapsed && (
@@ -50,7 +72,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
               <button
                 type="button"
                 title={collapsed ? `${PLATFORM_LABELS[platform]}${connected[platform] ? "" : " (not connected)"}` : undefined}
-                onClick={() => onChange(platform)}
+                onClick={() => handleChange(platform)}
                 className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
                   collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
                 } ${isActive ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
@@ -76,7 +98,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
               {platform === "meta" && !collapsed && (
                 <button
                   type="button"
-                  onClick={() => onChange("meta-sku-attribution")}
+                  onClick={() => handleChange("meta-sku-attribution")}
                   className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                     active === "meta-sku-attribution"
                       ? "bg-surface-2 text-ink-primary"
@@ -96,7 +118,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
               {platform === "meta" && !collapsed && (
                 <button
                   type="button"
-                  onClick={() => onChange("meta-creative-performance")}
+                  onClick={() => handleChange("meta-creative-performance")}
                   className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                     active === "meta-creative-performance"
                       ? "bg-surface-2 text-ink-primary"
@@ -119,7 +141,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
         <button
           type="button"
           title={collapsed ? `Shopify${shopifyConnected ? "" : " (not connected)"}` : undefined}
-          onClick={() => onChange("shopify")}
+          onClick={() => handleChange("shopify")}
           className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
             collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
           } ${active === "shopify" ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
@@ -160,6 +182,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
           {!collapsed && "Collapse"}
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

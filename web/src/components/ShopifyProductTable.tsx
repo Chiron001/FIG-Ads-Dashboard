@@ -98,7 +98,7 @@ export function ShopifyProductTable({ products }: Props) {
             </thead>
             <tbody>
               {sorted.map((row) => (
-                <tr key={row.productId} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                <tr key={row.productId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                   {COLUMNS.map((col) => (
                     <td
                       key={col.key}

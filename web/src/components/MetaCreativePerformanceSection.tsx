@@ -457,7 +457,7 @@ function AttributeBreakdownPanel({ ads }: { ads: AdRowFlat[] }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.value} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+              <tr key={r.value} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                 <td className="whitespace-nowrap px-4 py-2 font-medium text-ink-primary">
                   {r.value === "Not tagged" ? <span className="italic text-ink-muted">Not tagged</span> : <TagPill value={r.value} />}
                 </td>
@@ -673,7 +673,7 @@ export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
                   ))}
                 </tr>
                 {sorted.map((row) => (
-                  <tr key={row.key} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                  <tr key={row.key} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                     {columns.map((col) => (
                       <td
                         key={col.key}

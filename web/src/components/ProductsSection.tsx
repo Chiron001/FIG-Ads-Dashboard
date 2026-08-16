@@ -253,7 +253,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
             </thead>
             <tbody>
               {enriched.map((r) => (
-                <tr key={r.key} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                <tr key={r.key} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                   <td className="max-w-xs truncate px-4 py-2 font-medium text-ink-primary" title={r.label}>
                     {r.label}
                   </td>

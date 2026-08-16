@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Platform, SyncStatusResponse, ShopifyStatus } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
-import { COMPARISON_LABELS, COMPARISON_MODE_ORDER, type ComparisonMode } from "./lib/comparisonRange";
+import { type ComparisonMode } from "./lib/comparisonRange";
 import { fetchSyncStatus, fetchConfig, fetchShopifyStatus } from "./lib/api";
-import { DateRangePicker } from "./components/DateRangePicker";
+import { TopBar } from "./components/TopBar";
 import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
 import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
+import { SpendFlowBand } from "./components/SpendFlowBand";
+import { CommandPalette } from "./components/CommandPalette";
 import "./App.css";
 
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
@@ -29,6 +31,8 @@ function App() {
   // every platform as not-connected just because the API call itself failed.
   const [syncStatusError, setSyncStatusError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Campaign-table economics -- fetched once as a starting point, then
   // live-editable from the top bar (spec: "expose it as an editable field
@@ -67,6 +71,19 @@ function App() {
     loadSyncStatus();
   }, [loadSyncStatus]);
 
+  // Global ⌘K / Ctrl+K -- works from anywhere in the app, not just while
+  // focused on the TopBar's trigger button (spec §7: "the power-user touch").
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const connectedMap = useMemo(() => {
     const map = {} as Record<Platform, boolean>;
     for (const p of ALL_PLATFORMS) {
@@ -92,6 +109,19 @@ function App() {
     loadSyncStatus();
   }
 
+  // The signature flow band reads as "your whole spend picture" -- shown
+  // on every ad-platform page (using the same global range), hidden on
+  // Shopify (no ad spend at all) and the two Meta sub-views (already a
+  // lens on Meta specifically, one platform of the four this band spans).
+  const showSpendFlow = !isShopify && !isMetaSubView;
+  const title = isShopify
+    ? "Shopify"
+    : isMetaSkuAttribution
+      ? "Meta Ads — SKU Attribution"
+      : isMetaCreativePerformance
+        ? "Meta Ads — Creative Performance"
+        : PLATFORM_LABELS[activeSelection];
+
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
       <PlatformSidebar
@@ -99,78 +129,50 @@ function App() {
         onChange={setActiveSelection}
         connected={connectedMap}
         shopifyConnected={shopifyStatus?.connected ?? false}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-ink-primary">
-              {isShopify
-                ? "Shopify"
-                : isMetaSkuAttribution
-                  ? "Meta Ads — SKU Attribution"
-                  : isMetaCreativePerformance
-                    ? "Meta Ads — Creative Performance"
-                    : PLATFORM_LABELS[activeSelection]}
-            </h2>
-            <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-ink-secondary">
-              All figures in INR
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-xs text-ink-secondary">
-              <label className="flex items-center gap-1.5" title="Blended gross margin -- drives Profit and Break-even ROAS on the campaign table">
-                Margin
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={Math.round(grossMargin * 100)}
-                  onChange={(e) => setGrossMargin(Math.max(1, Math.min(100, Number(e.target.value) || 0)) / 100)}
-                  className="w-14 rounded-md border border-border bg-surface-1 px-1.5 py-1 text-right tabular-nums text-ink-primary"
-                />
-                %
-              </label>
-              <label className="flex items-center gap-1.5" title="Target ROAS -- drives the Scale/Maintain/Review verdict thresholds">
-                Target ROAS
-                <input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={targetRoas}
-                  onChange={(e) => setTargetRoas(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-14 rounded-md border border-border bg-surface-1 px-1.5 py-1 text-right tabular-nums text-ink-primary"
-                />
-                x
-              </label>
-            </div>
-            <select
-              value={comparisonMode}
-              onChange={(e) => setComparisonMode(e.target.value as ComparisonMode)}
-              title="Compare KPIs against another period"
-              className="rounded-md border border-border bg-surface-1 px-2.5 py-2 text-sm text-ink-secondary"
-            >
-              {COMPARISON_MODE_ORDER.map((mode) => (
-                <option key={mode} value={mode}>
-                  {COMPARISON_LABELS[mode]}
-                </option>
-              ))}
-            </select>
-            <DateRangePicker value={range} onChange={setRange} />
-          </div>
-        </header>
+        <TopBar
+          title={title}
+          lastSync={lastSync}
+          syncPulseKey={refreshKey}
+          onOpenNav={() => setSidebarOpen(true)}
+          grossMargin={grossMargin}
+          onGrossMarginChange={setGrossMargin}
+          targetRoas={targetRoas}
+          onTargetRoasChange={setTargetRoas}
+          comparisonMode={comparisonMode}
+          onComparisonModeChange={setComparisonMode}
+          range={range}
+          onRangeChange={setRange}
+          onOpenPalette={() => setPaletteOpen(true)}
+        />
 
         <main className="min-w-0 flex-1 space-y-4 px-6 py-6">
           {syncStatusError && (
-            <div className="rounded-md border border-status-critical/30 bg-status-critical/10 px-3 py-2 text-xs text-status-critical">
+            <div className="animate-fade-slide-in rounded-md border border-status-critical/30 bg-status-critical/10 px-3 py-2 text-xs text-status-critical">
               Can't reach the backend API ({syncStatusError}) — every platform will show as "not connected" until
               it's reachable. Make sure the server is running (<code className="tabular-nums">npm run dev:server</code>).
             </div>
           )}
 
           {!isShopify && <AttributionBanner />}
+
+          {showSpendFlow && (
+            <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
+              <SpendFlowBand
+                range={range}
+                refreshKey={refreshKey}
+                connected={connectedMap}
+                activePlatform={activeSelection in connectedMap ? (activeSelection as Platform) : null}
+                targetRoas={targetRoas}
+                grossMargin={grossMargin}
+                onSelectPlatform={setActiveSelection}
+              />
+            </div>
+          )}
 
           {isShopify ? (
             <ShopifySection
@@ -201,6 +203,10 @@ function App() {
           )}
         </main>
       </div>
+
+      {paletteOpen && (
+        <CommandPalette onNavigate={setActiveSelection} onSetRange={setRange} onClose={() => setPaletteOpen(false)} />
+      )}
     </div>
   );
 }

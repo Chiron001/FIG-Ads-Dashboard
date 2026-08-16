@@ -1,40 +1,108 @@
 @import "tailwindcss";
 
-/* Dark-only design system — the spec calls for a dark-themed internal tool,
-   not a light/dark toggle. Values are the dataviz skill's validated
-   reference palette (dark column), extended with a couple of UI-chrome
-   tokens (surface-2, border) it doesn't itself define. */
+/* ============================================================================
+   FIG Living — "Midnight Atelier" design system
+   ============================================================================
+   Dark-only, deliberately (per the original build spec, reconfirmed when this
+   visual pass was scoped) -- no [data-theme="light"] override, no toggle.
+   Every effort here goes into ONE excellent dark theme rather than splitting
+   focus across two.
+
+   Governing rule (UI/UX spec §0): glass is a material for FLOATING layers
+   only -- the top bar, dropdowns, the command palette, tooltips, the drawer.
+   Data surfaces (tables, KPI numbers, chart plot areas) stay solid so
+   figures stay crisp. Boldness is spent in exactly one place: the Spend Flow
+   band (SpendFlowBand.tsx). Everything else is quiet.
+
+   Token names below are kept identical to the pre-existing palette (surface-*,
+   ink-*, border, grid, axis, platform-*, status-*) so the ~20 already-built,
+   already-tested components that reference them via Tailwind classes
+   (bg-surface-1, text-ink-muted, ...) reskin automatically just by these
+   values changing -- no risky rename sweep across the codebase. New tokens
+   (accent, glass, motion) are additive.
+   ========================================================================= */
 @theme {
-  --color-surface-0: #0d0d0d; /* page plane */
-  --color-surface-1: #1a1a19; /* card / chart surface */
-  --color-surface-2: #232322; /* hover / elevated */
+  /* Solid surfaces -- near-black with a faint warm cast (not cold slate),
+     evoking FIG's own warm-lighting product world. Data lives here. */
+  --color-surface-0: #0b0d10; /* page plane */
+  --color-surface-1: #14171c; /* card / table / chart surface */
+  --color-surface-2: #1b1f26; /* hover / raised / table header */
 
-  --color-ink-primary: #ffffff;
-  --color-ink-secondary: #c3c2b7;
-  --color-ink-muted: #898781;
+  --color-ink-primary: #f2f4f7;
+  --color-ink-secondary: #9ba3af;
+  /* #818794, not the spec's literal #6B7280 -- that one measures 3.72:1
+     against --color-surface-1, below the 4.5:1 text-contrast floor (quality
+     floor is non-negotiable per spec §8; verified via WCAG relative
+     luminance, not eyeballed). This clears 4.98:1. */
+  --color-ink-muted: #818794;
 
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-grid: #2c2c2a;
-  --color-axis: #383835;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-grid: #23272f;
+  --color-axis: #2c313a;
 
-  /* Categorical palette, assigned in ALL_PLATFORMS fixed order — never
-     cycled or brand-matched, per the dataviz skill's CVD-safety rule. */
-  --color-platform-google: #3987e5;
-  --color-platform-meta: #d95926;
-  --color-platform-amazon: #199e70;
+  /* Categorical palette, assigned in ALL_PLATFORMS fixed order -- never
+     cycled or restyled per-row (dataviz skill's CVD-safety rule, unchanged
+     from the original palette; only lightness/chroma nudged to sit well
+     against the new warmer near-black). */
+  --color-platform-google: #4e93ea;
+  --color-platform-meta: #e46a3a;
+  --color-platform-amazon: #2fac7c;
+  /* #c98500, not a lighter nudge -- validate_palette.js flagged #d99a2b as
+     outside the dark-mode lightness band; #c98500 (this palette's original
+     Myntra value) passes all five checks against the new surface color. */
   --color-platform-myntra: #c98500;
 
-  --color-status-good: #0ca30c;
-  --color-status-warning: #fab219;
-  --color-status-serious: #ec835a;
-  --color-status-critical: #d03b3b;
+  /* Semantic status -- retinted to the spec's pos/warn/neg hues. "serious"
+     keeps a distinct mid-tone between warning and critical (used by
+     normalizeStatus for DISAPPROVED/WITH_ISSUES) rather than being dropped,
+     since existing components already branch on 4 tones, not 3. */
+  --color-status-good: #4ade80;
+  --color-status-warning: #e5a94e;
+  --color-status-serious: #e2793f;
+  --color-status-critical: #f26d6d;
+  --color-status-info: #6ba5e5;
+
+  /* The one accent -- a refined amber-gold, derived from FIG's own warm
+     interior-lighting product line rather than picked arbitrarily. Used
+     with restraint: the signature flow band, focus rings, active-state
+     indicators, primary actions. Never a wash of color across the page. */
+  --color-accent: #e5a94e;
+  --color-accent-soft: rgba(229, 169, 78, 0.14);
+
+  /* Typography -- a characterful display serif for the title/section
+     headers ONLY, Inter for everything else UI, JetBrains Mono reserved for
+     hero numerals (KPI tiles, the flow band) where a data product earns a
+     little typographic personality. Dense table figures stay in Inter +
+     tabular numerals -- mono digits get cramped at 13px in a wide table. */
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans:
+    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Motion -- one consistent easing curve everywhere, two duration bands
+     (micro-interactions vs. the single hero moment). */
+  --ease-signature: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-micro: 180ms;
+  --duration-base: 280ms;
+  --duration-hero: 1200ms;
+}
+
+/* Floating-layer glass tokens live outside @theme -- backdrop-filter isn't a
+   color utility Tailwind can generate from a theme token, so glass ships as
+   an explicit recipe (below) built on these custom properties instead. */
+:root {
+  --glass-bg: rgba(20, 23, 28, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-highlight: rgba(255, 255, 255, 0.07);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 body {
   margin: 0;
   background: var(--color-surface-0);
   color: var(--color-ink-primary);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   color-scheme: dark;
 }
 
@@ -47,10 +115,132 @@ body {
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--color-platform-google) 40%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
 }
 
-/* tabular figures for anything that must align vertically (tables, axis ticks) */
+/* Tabular figures for anything that must align vertically (tables, axis
+   ticks, KPI values) -- both properties set for maximum engine coverage. */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Reserved for hero numerals only (KPI tile values, the flow band) --
+   NOT applied to dense table cells, where mono digits get cramped at small
+   sizes; those stay on Inter + .tabular-nums. */
+.font-hero-num {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* Display serif -- the dashboard title and section headers ONLY. A little
+   editorial warmth most dashboards skip entirely; used sparingly by design. */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================================
+   Glass -- the exact recipe, applied only to floating layers (top bar,
+   dropdowns, the command palette, tooltips, the drawer). Never on tables,
+   KPI cards, or chart plot areas -- those use bg-surface-* (solid).
+   ========================================================================= */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass), inset 0 1px 0 var(--glass-highlight);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass {
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+  }
+}
+
+/* prefers-reduced-transparency: drop every glass layer to a solid surface --
+   same visual position in the layout, just opaque. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--color-surface-1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* ============================================================================
+   Focus -- visible, accent-colored, on every interactive element. Never
+   suppressed; :focus-visible so mouse clicks don't show a ring mice don't need.
+   ========================================================================= */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ============================================================================
+   Motion -- keyframes used by the page-load stagger, skeleton shimmer, and
+   the sync-status pulse. Actual per-element timing/delay is set inline by
+   the components that use these (App.tsx's stagger, KpiTile, SyncStatusDot).
+   ========================================================================= */
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.animate-fade-slide-in {
+  animation: fade-slide-in var(--duration-base) var(--ease-signature) both;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface-1) 0%, var(--color-surface-2) 50%, var(--color-surface-1) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2s ease-in-out infinite;
+}
+
+/* prefers-reduced-motion: mandatory across the app -- disable count-ups
+   (handled in JS via the useReducedMotion hook), the flow band's draw-in,
+   entrance staggers, and hover transitions. Content stays fully usable,
+   just instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

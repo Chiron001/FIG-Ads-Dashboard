@@ -48,7 +48,7 @@ export function DateRangePicker({ value, onChange }: Props) {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-border bg-surface-1 shadow-xl shadow-black/40">
+        <div className="glass animate-fade-slide-in absolute right-0 z-20 mt-1.5 w-72 overflow-hidden rounded-xl">
           <div className="p-1.5">
             {PRESET_ORDER.map((preset) => {
               const selected = value.preset === preset;
@@ -60,11 +60,11 @@ export function DateRangePicker({ value, onChange }: Props) {
                     onChange(presetRange(preset));
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-ink-primary hover:bg-surface-2 transition-colors"
+                  className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-ink-primary transition-colors hover:bg-white/[0.06]"
                 >
                   <span>{PRESET_LABELS[preset]}</span>
                   {selected && (
-                    <svg width="16" height="16" viewBox="0 0 16 16" className="text-platform-google">
+                    <svg width="16" height="16" viewBox="0 0 16 16" className="text-accent">
                       <path
                         d="M3.5 8.5L6.5 11.5L12.5 4.5"
                         stroke="currentColor"
@@ -80,7 +80,7 @@ export function DateRangePicker({ value, onChange }: Props) {
             })}
           </div>
 
-          <div className="border-t border-border p-3">
+          <div className="border-t border-white/10 p-3">
             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-muted">Custom range</div>
             <div className="flex items-center gap-2">
               <input
@@ -88,7 +88,7 @@ export function DateRangePicker({ value, onChange }: Props) {
                 value={customFrom}
                 max={customTo}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="w-full rounded-md border border-border bg-surface-0 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
+                className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
               />
               <span className="text-ink-muted">–</span>
               <input
@@ -96,7 +96,7 @@ export function DateRangePicker({ value, onChange }: Props) {
                 value={customTo}
                 min={customFrom}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="w-full rounded-md border border-border bg-surface-0 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
+                className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
               />
             </div>
             <button
@@ -105,7 +105,7 @@ export function DateRangePicker({ value, onChange }: Props) {
                 onChange({ preset: "custom", from: customFrom, to: customTo });
                 setOpen(false);
               }}
-              className="mt-2 w-full rounded-md bg-platform-google/90 px-3 py-1.5 text-sm font-medium text-white hover:bg-platform-google transition-colors"
+              className="mt-2 w-full rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-surface-0 transition-[transform,opacity] duration-[var(--duration-micro)] hover:opacity-90 active:scale-[0.98]"
             >
               Apply
             </button>

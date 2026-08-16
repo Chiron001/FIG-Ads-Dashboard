@@ -202,9 +202,12 @@ export function PlatformSection({
         <KpiTile
           label="Spend"
           value={formatCurrency(totals?.spend)}
+          numeric={totals?.spend}
+          numericFormat="currency"
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.spend, comparisonTotals?.spend)}
           deltaLabel="vs comparison"
+          staggerIndex={0}
         />
         <KpiTile
           label="Impressions"
@@ -212,46 +215,65 @@ export function PlatformSection({
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.impressions, comparisonTotals?.impressions)}
           deltaLabel="vs comparison"
+          staggerIndex={1}
         />
         <KpiTile
           label="Clicks"
           value={formatNumber(totals?.clicks)}
+          numeric={totals?.clicks}
+          numericFormat="number"
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.clicks, comparisonTotals?.clicks)}
           deltaLabel="vs comparison"
+          staggerIndex={2}
         />
         <KpiTile
           label="Orders"
           value={formatNumber(totals?.conversions)}
+          numeric={totals?.conversions}
+          numericFormat="number"
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.conversions, comparisonTotals?.conversions)}
           deltaLabel="vs comparison"
+          staggerIndex={3}
         />
         <KpiTile
           label="Revenue"
           value={formatCurrency(totals?.revenue)}
+          numeric={totals?.revenue}
+          numericFormat="currency"
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.revenue, comparisonTotals?.revenue)}
           deltaLabel="vs comparison"
+          staggerIndex={4}
         />
         <KpiTile
           label="ROAS"
           value={formatMultiplier(totals?.roas)}
+          numeric={totals?.roas}
+          numericFormat="multiplier"
           accent={color}
           delta={comparisonMode === "none" ? undefined : computeDelta(totals?.roas, comparisonTotals?.roas)}
           deltaLabel="vs comparison"
+          staggerIndex={5}
         />
-        <KpiTile label="Marginal ROAS" value={formatMultiplier(marginalRoas)} sublabel="next ₹ of spend, vs prior period" accent={color} />
+        <KpiTile
+          label="Marginal ROAS"
+          value={formatMultiplier(marginalRoas)}
+          sublabel="next ₹ of spend, vs prior period"
+          accent={color}
+          staggerIndex={6}
+        />
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7 ${loading ? "opacity-60" : ""}`}>
-        <KpiTile label="CTR" value={formatPercent(totals?.ctr)} />
-        <KpiTile label="CPC" value={formatCurrency(totals?.cpc)} />
-        <KpiTile label="CPM" value={formatCurrency(totals?.cpm)} />
-        <KpiTile label="ACOS" value={formatPercent(totals?.acos)} />
-        <KpiTile label="CVR" value={formatPercent(totals?.cvr)} />
-        <KpiTile label="CPA" value={formatCurrency(totals?.cpa)} />
-        <KpiTile label="AOV" value={formatCurrency(totals?.aov)} />
+        <KpiTile label="CTR" value={formatPercent(totals?.ctr)} staggerIndex={7} />
+        <KpiTile label="CPC" value={formatCurrency(totals?.cpc)} staggerIndex={8} />
+        <KpiTile label="CPM" value={formatCurrency(totals?.cpm)} staggerIndex={9} />
+        <KpiTile label="ACOS" value={formatPercent(totals?.acos)} staggerIndex={10} />
+        <KpiTile label="CVR" value={formatPercent(totals?.cvr)} staggerIndex={11} />
+        <KpiTile label="CPA" value={formatCurrency(totals?.cpa)} staggerIndex={12} />
+        <KpiTile label="AOV" value={formatCurrency(totals?.aov)} staggerIndex={13} />
       </div>
 
       <div className="rounded-lg border border-border bg-surface-1 p-4">

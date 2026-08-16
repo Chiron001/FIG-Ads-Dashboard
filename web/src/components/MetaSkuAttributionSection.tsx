@@ -514,7 +514,7 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
                   ))}
                 </tr>
                 {sorted.map((row) => (
-                  <tr key={row.key} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                  <tr key={row.key} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                     {columns.map((col) => (
                       <td
                         key={col.key}

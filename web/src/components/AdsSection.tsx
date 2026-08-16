@@ -167,7 +167,7 @@ export function AdsSection({ platform, range, grossMargin, targetRoas, campaigns
               {enriched.map((a) => {
                 const status = normalizeStatus(a.adStatus);
                 return (
-                  <tr key={a.adId} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                  <tr key={a.adId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                     <td className="max-w-[220px] truncate px-4 py-2 font-medium text-ink-primary" title={adLabel(a)}>
                       {adLabel(a)}
                     </td>

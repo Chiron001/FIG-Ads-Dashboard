@@ -120,7 +120,7 @@ export function PortfolioView({ platform, range, grossMargin, color, refreshKey 
             </thead>
             <tbody>
               {data.contribution.map((c) => (
-                <tr key={c.campaignId} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                <tr key={c.campaignId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                   <td className="max-w-xs truncate px-4 py-2 font-medium text-ink-primary">{c.campaignName ?? c.campaignId}</td>
                   <td className={`px-4 py-2 text-right tabular-nums ${c.contribution > 0 ? "text-status-good" : c.contribution < 0 ? "text-status-critical" : "text-ink-secondary"}`}>
                     {formatCurrency(c.contribution)}

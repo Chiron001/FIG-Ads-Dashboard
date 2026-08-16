@@ -495,6 +495,113 @@ Build proceeds phase by phase per the project spec, committing after each.
         search scoped per level, a pinned Total row reflecting the current
         filter, and the amber "directional" / green "true number" caveat
         banners with cross-links between tabs.
+- [x] **UI/UX visual pass — "Midnight Atelier" design system.** A full
+      restyle against a detailed design spec, scoped to `/web` only (no
+      data/route changes). Confirmed with the user up front: dark-only,
+      matching the original build spec's deliberate choice — no
+      `[data-theme="light"]`, all the polish spent on one theme rather than
+      split across two.
+      - **Tokens, not a rewrite.** The existing `@theme` CSS-var names
+        (`surface-*`, `ink-*`, `border`, `platform-*`, `status-*`) kept their
+        names and just got new values — every one of the ~20 already-built
+        components reskins automatically through the Tailwind classes they
+        already use, with zero risky rename sweep. New tokens are additive:
+        `--color-accent` (a warm amber-gold, deliberately derived from FIG's
+        own lighting product line, not picked arbitrarily), glass tokens,
+        `--font-display`/`--font-sans`/`--font-mono`, motion timing vars.
+        Palette re-validated with the dataviz skill's `validate_palette.js`
+        (not eyeballed) — caught and fixed two real regressions: Myntra's
+        nudged amber fell outside the dark-mode lightness band (reverted to
+        its original value, which passes), and the new `ink-muted` measured
+        3.72:1 against `surface-1` (below the 4.5:1 text floor) — retuned to
+        4.98:1.
+      - **Glass only on floating layers** (spec's governing rule): the top
+        bar, the date-range dropdown, the command palette, the KPI explain
+        drawer, the mobile nav drawer, the Spend Flow hover tooltip. Tables,
+        KPI numbers, and chart plot areas all stay solid — a number never
+        renders on top of blur. `prefers-reduced-transparency` drops every
+        `.glass` surface to solid via one CSS rule.
+      - **The signature element — Spend Flow.** Total Spend → each connected
+        platform → Revenue, one lane per platform sized by its real spend
+        share (linear, not sqrt-compressed — the spec's "proportional"
+        claim stays literal), filled with a left-to-right gradient from the
+        platform's own color into a red→amber→green tone keyed to that
+        platform's ROAS vs. Target ROAS. Hand-rolled SVG (no D3/visx
+        dependency) — the spec explicitly allows this simpler form ("an
+        elegant animated proportional-flow bar") over a full multi-width
+        Sankey, which would need revenue and spend to reconcile on
+        different scales for no real payoff. Animated draw-in
+        (`scaleX`, staggered per lane, ~1.2s), hover dims other lanes and
+        shows a glass tooltip (spend/revenue/ROAS/profit), click navigates
+        to that platform, and a text legend (name + spend + ROAS) means
+        color is never the only signal even for a lane too thin to hold its
+        own inline label. Shown on every ad-platform page, hidden on
+        Shopify/the two Meta sub-views.
+      - **Typography**: Fraunces (display serif) on the dashboard title and
+        section headers only; Inter everywhere else; JetBrains Mono
+        reserved for hero numerals (KPI tile values, the flow band's
+        totals) — dense table figures stay on Inter + tabular numerals,
+        where mono digits get visually cramped at 13px.
+      - **Motion**: KPI tiles count up on first load/range change (~600ms
+        ease-out, `useCountUp`) and stagger in 40ms apart; hover lifts KPI
+        cards 2px and tints table rows with the accent color; one shared
+        easing curve (`cubic-bezier(0.22,1,0.36,1)`) everywhere.
+        `prefers-reduced-motion` is enforced two ways: a blanket CSS rule
+        zeroing all animation/transition durations, plus a
+        `usePrefersReducedMotion` hook so JS-driven animation (the count-up
+        loop, the flow band's draw-in) skips straight to the final state
+        rather than just visually snapping through a zero-duration CSS
+        transition.
+      - **Fixed a real count-up bug found in testing, not shipped assuming
+        it worked.** Two independent issues: (1) a `requestAnimationFrame`
+        `start` timestamp captured via a separate `performance.now()` call
+        (rather than the first callback's own `now`) could read *after*
+        that first callback's timestamp, producing a negative elapsed time
+        and a garbage negative eased value on frame one; (2) syncing the
+        animation's start value from a `useEffect` left a one-render gap
+        where the old (often still-`undefined`) display value was showing,
+        so the caller's fallback flashed the *final* number for a frame
+        before the count-up visibly restarted from 0 underneath it. Root-
+        caused with an in-page `requestAnimationFrame` sampler (bypassing
+        Playwright round-trip jitter, which had been muddying earlier
+        attempts to reproduce it) against a real production build, not the
+        dev server. Fixed by capturing `start` from the first tick's own
+        timestamp and moving the start-value sync to render time (React's
+        documented "adjust state during render" pattern) instead of an
+        effect. Verified clean and monotonic 0→target afterward.
+      - **Command palette (⌘K)**: glass overlay, navigate to any
+        platform/section or jump to a date-range preset by typing. Scoped
+        to navigation, not a campaign-name search index — indexing every
+        campaign across every platform client-side is disproportionate
+        machinery for what's fundamentally a navigation shortcut.
+      - **"Explain this number"**: click any KPI tile to open a glass
+        drawer with its formula and a one-line description
+        (`metricExplainers.ts`) — trust through transparency. Scoped to the
+        formula, not the raw rows behind it (that would mean threading raw
+        campaign/order data through every section just to power this).
+      - **Sync status dot** in the top bar (green/amber/red from
+        `lastSync.status`), pulses briefly on `refreshKey` change (i.e. just
+        after a sync completes) rather than tracking true in-flight state,
+        which would need lifting each section's own "Sync now" trigger up a
+        level for a purely cosmetic win.
+      - **Responsive**: sidebar collapses to a glass overlay drawer below
+        the `sm` breakpoint (hamburger trigger in the top bar, backdrop-tap
+        or pick-a-destination both dismiss it) — the original layout simply
+        didn't reflow below ~640px (the fixed-width sidebar ate most of a
+        375px screen); this was caught in the mobile screenshot pass, not
+        assumed to already work.
+      - **Verified**: full monorepo build + 87 server tests green;
+        `oxlint` clean (one pre-existing warning, not introduced here);
+        colorblind-safe pairing preserved everywhere it already existed
+        (status pills, delta ▲/▼ arrows) and extended to the flow band's
+        legend; keyboard focus rings (accent, 2px, `:focus-visible`)
+        confirmed visible via a real Tab-through screenshot; mobile drawer,
+        command palette, KPI drawer, and `prefers-reduced-motion` all
+        screenshot-verified via Playwright with zero console errors.
+      - **Descoped, explicitly** (spec is large; these didn't make this
+        pass): PNG chart export, a comfortable/compact density toggle, a
+        full command-palette campaign-name index, and per-chart screen-
+        reader table fallbacks.
 
 ## Structure
 

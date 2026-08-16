@@ -470,7 +470,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
             </thead>
             <tbody>
               {sorted.map((row) => (
-                <tr key={row.campaignId} className="border-b border-border last:border-0 hover:bg-surface-2 transition-colors">
+                <tr key={row.campaignId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                   {columns.map((col) => (
                     <td
                       key={col.key}

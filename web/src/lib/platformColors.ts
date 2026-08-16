@@ -7,8 +7,8 @@ import type { Platform } from "@fig/shared";
 // real hex, not var(--color-platform-google). Keep both in sync if the
 // palette ever changes.
 export const PLATFORM_COLORS: Record<Platform, string> = {
-  google: "#3987e5",
-  meta: "#d95926",
-  amazon: "#199e70",
+  google: "#4e93ea",
+  meta: "#e46a3a",
+  amazon: "#2fac7c",
   myntra: "#c98500",
 };
