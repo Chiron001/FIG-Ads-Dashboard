@@ -877,6 +877,14 @@ export interface ProjectionRow {
   unitTarget: number | null;
   /** User-entered, from product_targets -- null until set. */
   price: number | null;
+  /** Units actually sold last calendar month -- offered as a one-click fill
+   * for Unit Target ("plan to match last month"), not a suggestion the
+   * server picks for you. */
+  previousMonthUnitsSold: number;
+  /** Live Shopify selling price (min-variant), fetched from the catalog --
+   * offered as a one-click fill for Price. Null if the catalog fetch failed
+   * or the product has no priced variant. */
+  shopifyPrice: number | null;
   /** unitTarget * price -- null if either input is unset. */
   targetRevenue: number | null;
   /** unitTarget / previousMonthCvr -- null if unitTarget or CVR is unset/null. */

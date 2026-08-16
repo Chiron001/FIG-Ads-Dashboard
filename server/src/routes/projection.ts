@@ -194,6 +194,8 @@ projectionRouter.get(
         title: p.title,
         unitTarget,
         price,
+        previousMonthUnitsSold: li.prevMonthUnits,
+        shopifyPrice: p.price,
         targetRevenue,
         requiredTraffic,
         cpm,

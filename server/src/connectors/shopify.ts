@@ -121,7 +121,7 @@ const PRODUCTS_QUERY = `
   query Products($cursor: String) {
     products(first: 100, after: $cursor, query: "status:active", sortKey: TITLE) {
       pageInfo { hasNextPage endCursor }
-      edges { node { id title handle } }
+      edges { node { id title handle priceRangeV2 { minVariantPrice { amount } } } }
     }
   }
 `;
@@ -130,10 +130,18 @@ export interface CanonicalShopifyProduct {
   productId: string; // gid://shopify/Product/{id} -- same shape fact_shopify_line_items.product_id stores
   title: string;
   handle: string;
+  /** Live selling price, min-variant (a product with multiple variants at
+   * different prices has no single "the" price -- this is the starting/
+   * lowest one, same convention Shopify's own storefront uses for "from
+   * ₹X" display). Null if the product somehow has no priced variant. */
+  price: number | null;
 }
 
 interface ProductsQueryResult {
-  products: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; edges: { node: { id: string; title: string; handle: string } }[] };
+  products: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    edges: { node: { id: string; title: string; handle: string; priceRangeV2: { minVariantPrice: { amount: string } } } }[];
+  };
 }
 
 interface GraphQLResponse<T> {
@@ -303,7 +311,12 @@ export class ShopifyConnector {
 
     do {
       const data: ProductsQueryResult = await shopifyGraphQL<ProductsQueryResult>(PRODUCTS_QUERY, { cursor });
-      products.push(...data.products.edges.map((e) => ({ productId: e.node.id, title: e.node.title, handle: e.node.handle })));
+      products.push(
+        ...data.products.edges.map((e) => {
+          const amount = e.node.priceRangeV2?.minVariantPrice?.amount;
+          return { productId: e.node.id, title: e.node.title, handle: e.node.handle, price: amount != null ? Number(amount) : null };
+        })
+      );
       cursor = data.products.pageInfo.hasNextPage ? data.products.pageInfo.endCursor : null;
     } while (cursor);
 

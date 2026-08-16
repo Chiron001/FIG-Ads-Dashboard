@@ -80,6 +80,7 @@ export function ProjectionSheetSection({ connected }: Props) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<keyof ProjectionRow>("title");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [filterMode, setFilterMode] = useState<"all" | "complete" | "incomplete">("all");
 
   function load() {
     setLoading(true);
@@ -157,9 +158,14 @@ export function ProjectionSheetSection({ connected }: Props) {
     [rows, drafts, data]
   );
 
+  const completeCount = useMemo(() => effectiveRows.filter((r) => r.unitTarget != null && r.price != null).length, [effectiveRows]);
+  const incompleteCount = effectiveRows.length - completeCount;
+
   const filteredSorted = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const filtered = term ? effectiveRows.filter((r) => r.title.toLowerCase().includes(term)) : effectiveRows;
+    let filtered = term ? effectiveRows.filter((r) => r.title.toLowerCase().includes(term)) : effectiveRows;
+    if (filterMode === "complete") filtered = filtered.filter((r) => r.unitTarget != null && r.price != null);
+    else if (filterMode === "incomplete") filtered = filtered.filter((r) => r.unitTarget == null || r.price == null);
     return [...filtered].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
@@ -171,7 +177,7 @@ export function ProjectionSheetSection({ connected }: Props) {
       const cmp = typeof av === "string" || typeof bv === "string" ? String(av).localeCompare(String(bv)) : (av as number) < (bv as number) ? -1 : (av as number) > (bv as number) ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [effectiveRows, search, sortKey, sortDir]);
+  }, [effectiveRows, search, sortKey, sortDir, filterMode]);
 
   function toggleSort(key: keyof ProjectionRow) {
     if (key === sortKey) {
@@ -212,12 +218,13 @@ export function ProjectionSheetSection({ connected }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs text-ink-muted">
           <InfoNote label="How this sheet works">
-            Every active Shopify product, live -- Unit Target and Price are the only fields you set; everything else
-            is computed. Required Traffic = Unit Target ÷ Previous Month CVR (units ÷ sessions). Minimum Ad Spend
-            Required = (1000 ÷ CPM) × Required Traffic × 0.8. Planned DRR = Unit Target ÷ days in this month. Current
-            DRR = MTD Units Sold ÷ today's day-of-month. Projected (Month End) columns extrapolate the current daily
-            pace across the full month. CPM is Meta's product-catalog CPM for the previous full month -- shows N/A for
-            products with no matched catalog spend that month.
+            Every active Shopify product, live -- Unit Target and Price are the only fields you set. Type a value
+            directly, or click the small hint underneath each input to fill it from last month's actual units sold
+            (Unit Target) or Shopify's live selling price (Price). Required Traffic = Unit Target ÷ Previous Month
+            CVR (units ÷ sessions). Minimum Ad Spend Required = (1000 ÷ CPM) × Required Traffic × 0.8. Planned DRR =
+            Unit Target ÷ days in this month. Current DRR = MTD Units Sold ÷ today's day-of-month. Projected (Month
+            End) columns extrapolate the current daily pace across the full month. CPM is Meta's product-catalog CPM
+            for the previous full month -- shows N/A for products with no matched catalog spend that month.
           </InfoNote>
           {data && (
             <>
@@ -267,13 +274,40 @@ export function ProjectionSheetSection({ connected }: Props) {
           <h3 className="text-sm font-semibold text-ink-primary">
             Products <span className="font-normal text-ink-muted">({filteredSorted.length})</span>
           </h3>
-          <input
-            type="text"
-            placeholder="Search products…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border border-border p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setFilterMode("all")}
+                className={`rounded px-2.5 py-1 transition-colors ${filterMode === "all" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"}`}
+              >
+                All ({effectiveRows.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("complete")}
+                title="Only products with both Unit Target and Price set"
+                className={`rounded px-2.5 py-1 transition-colors ${filterMode === "complete" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"}`}
+              >
+                Complete ({completeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("incomplete")}
+                title="Products missing Unit Target and/or Price"
+                className={`rounded px-2.5 py-1 transition-colors ${filterMode === "incomplete" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"}`}
+              >
+                Missing Target/Price ({incompleteCount})
+              </button>
+            </div>
+            <input
+              type="text"
+              placeholder="Search products…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
+            />
+          </div>
         </div>
 
         {filteredSorted.length === 0 ? (
@@ -317,24 +351,48 @@ export function ProjectionSheetSection({ connected }: Props) {
                     <tr key={row.productId} className={`border-b border-border last:border-0 transition-colors hover:bg-accent-soft ${isDirty ? "bg-accent-soft/40" : ""}`}>
                       <td className="sticky left-0 z-10 max-w-[220px] truncate bg-surface-1 px-4 py-2 font-medium text-ink-primary">{row.title}</td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          value={draft.unitTarget ?? ""}
-                          onChange={(e) => setDraft(row.productId, { unitTarget: e.target.value === "" ? null : Number(e.target.value) })}
-                          placeholder="—"
-                          className="w-20 rounded-md border border-border bg-surface-0 px-2 py-1 text-right tabular-nums text-ink-primary placeholder:text-ink-muted"
-                        />
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="number"
+                            min={0}
+                            value={draft.unitTarget ?? ""}
+                            onChange={(e) => setDraft(row.productId, { unitTarget: e.target.value === "" ? null : Number(e.target.value) })}
+                            placeholder="—"
+                            className="w-20 rounded-md border border-border bg-surface-0 px-2 py-1 text-right tabular-nums text-ink-primary placeholder:text-ink-muted"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setDraft(row.productId, { unitTarget: row.previousMonthUnitsSold })}
+                            title="Use previous month's units sold"
+                            className="text-[10px] tabular-nums text-ink-muted underline decoration-dotted hover:text-accent"
+                          >
+                            prev: {formatNumber(row.previousMonthUnitsSold)}
+                          </button>
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          value={draft.price ?? ""}
-                          onChange={(e) => setDraft(row.productId, { price: e.target.value === "" ? null : Number(e.target.value) })}
-                          placeholder="—"
-                          className="w-20 rounded-md border border-border bg-surface-0 px-2 py-1 text-right tabular-nums text-ink-primary placeholder:text-ink-muted"
-                        />
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="number"
+                            min={0}
+                            value={draft.price ?? ""}
+                            onChange={(e) => setDraft(row.productId, { price: e.target.value === "" ? null : Number(e.target.value) })}
+                            placeholder="—"
+                            className="w-20 rounded-md border border-border bg-surface-0 px-2 py-1 text-right tabular-nums text-ink-primary placeholder:text-ink-muted"
+                          />
+                          {row.shopifyPrice != null ? (
+                            <button
+                              type="button"
+                              onClick={() => setDraft(row.productId, { price: row.shopifyPrice })}
+                              title="Use the live Shopify selling price"
+                              className="text-[10px] tabular-nums text-ink-muted underline decoration-dotted hover:text-accent"
+                            >
+                              shop: {formatNumber(row.shopifyPrice)}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-ink-muted">shop: N/A</span>
+                          )}
+                        </div>
                       </td>
                       {DERIVED_COLUMNS.map((col) => (
                         <td key={col.key} style={{ background: GROUP_BG[col.group] }} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-secondary">
