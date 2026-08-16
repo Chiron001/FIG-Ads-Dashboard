@@ -627,7 +627,19 @@ export interface ProductPerformanceRow extends DerivedMetrics {
   impressions: number;
   clicks: number;
   conversions: number;
+  /** Ad-platform-attributed revenue (Google Shopping / Meta catalog match) --
+   * directional per the section's caveat banner, not ground truth. */
   revenue: number;
+  /** Shopify's actual order revenue for this exact catalog item (matched via
+   * product handle on Meta, product+variant id on Google -- see
+   * server/src/routes/metrics.ts's websiteRevenueForProductItem). Only
+   * populated at groupBy="sku" (a category roll-up mixes join keys); null
+   * when nothing matched, not 0. This is the ground truth `revenue` above
+   * is only a platform's claim about. */
+  websiteRevenue: number | null;
+  /** websiteRevenue ÷ spend -- the "true ROAS" (TROAS), as opposed to
+   * `roas` (in DerivedMetrics), which uses the platform-attributed `revenue`. */
+  websiteRoas: number | null;
 }
 
 export interface MetricsProductsResponse {

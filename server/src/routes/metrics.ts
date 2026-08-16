@@ -31,6 +31,77 @@ import type {
 const PRODUCT_RECONCILIATION_TOLERANCE = 0.05;
 const AD_RECONCILIATION_TOLERANCE = 0.01;
 
+// Neither platform's catalog product_item_id is the Shopify SKU string --
+// confirmed live: Meta's is USUALLY "/products/{handle}#product" (the
+// storefront URL) but sometimes a bare numeric catalog id instead (an
+// older/differently-synced catalog entry -- the regex below simply doesn't
+// match those, leaving websiteRevenue null rather than guessing); Google's
+// is "shopify_zz_{productNumericId}_{variantNumericId}" (the numeric
+// halves of "gid://shopify/Product/..." and ".../ProductVariant/...").
+// Both DO encode a real Shopify identifier when they match, just not the
+// SKU directly -- so the true-ROAS join keys off the product handle (Meta)
+// or the product+variant id pair (Google), matched against
+// fact_shopify_line_items (which already carries both, see
+// db/migrations/0007 for product_handle and the normal Shopify sync for
+// product_id/variant_id).
+const META_PRODUCT_ITEM_PATTERN = /^\/products\/([^/#?]+)/;
+const GOOGLE_PRODUCT_ITEM_PATTERN = /^shopify_zz_(\d+)_(\d+)$/;
+
+interface WebsiteRevenueEntry {
+  revenue: number;
+}
+
+/** One row per (product_id, variant_id) AND one row per product_handle,
+ * both pre-aggregated from the same Shopify line-item query -- the caller
+ * picks whichever key matches the platform's product_item_id shape. */
+async function fetchShopifyRevenueByProductKeys(
+  from: string,
+  to: string
+): Promise<{ byHandle: Map<string, WebsiteRevenueEntry>; byProductVariant: Map<string, WebsiteRevenueEntry> }> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select product_handle, product_id, variant_id, coalesce(sum(line_total), 0)::float8 as revenue
+     from fact_shopify_line_items
+     where date between $1 and $2
+     group by product_handle, product_id, variant_id`,
+    [from, to]
+  );
+
+  const byHandle = new Map<string, WebsiteRevenueEntry>();
+  const byProductVariant = new Map<string, WebsiteRevenueEntry>();
+  for (const r of rows) {
+    if (r.product_handle) {
+      const cur = byHandle.get(r.product_handle);
+      byHandle.set(r.product_handle, { revenue: (cur?.revenue ?? 0) + r.revenue });
+    }
+    if (r.product_id && r.variant_id) {
+      const key = `${r.product_id}|${r.variant_id}`;
+      const cur = byProductVariant.get(key);
+      byProductVariant.set(key, { revenue: (cur?.revenue ?? 0) + r.revenue });
+    }
+  }
+  return { byHandle, byProductVariant };
+}
+
+/** True (website) revenue for one catalog product_item_id -- null if its
+ * shape doesn't match either platform's known pattern, or nothing in
+ * Shopify matched. Never a guess: an unmatched product stays null, not 0. */
+function websiteRevenueForProductItem(
+  platform: GrainPlatform,
+  productItemId: string,
+  keys: { byHandle: Map<string, WebsiteRevenueEntry>; byProductVariant: Map<string, WebsiteRevenueEntry> }
+): number | null {
+  if (platform === "meta") {
+    const m = productItemId.match(META_PRODUCT_ITEM_PATTERN);
+    if (!m) return null;
+    return keys.byHandle.get(m[1])?.revenue ?? null;
+  }
+  const m = productItemId.match(GOOGLE_PRODUCT_ITEM_PATTERN);
+  if (!m) return null;
+  const key = `gid://shopify/Product/${m[1]}|gid://shopify/ProductVariant/${m[2]}`;
+  return keys.byProductVariant.get(key)?.revenue ?? null;
+}
+
 export const metricsRouter = Router();
 
 const RAW_METRICS = ["spend", "impressions", "clicks", "conversions", "revenue"] as const;
@@ -337,17 +408,18 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
   const campaignFilter = campaignId ? (params.push(campaignId), `and campaign_id = $${params.length}`) : "";
 
   // Nulls in product_type_l1/l2 must not break grouping -- coalesce to a
-  // literal "—" group key so ungrouped/uncategorized spend still rolls up
-  // into one visible row instead of silently vanishing or fragmenting.
-  // (Meta rows are always null here -- its product_id breakdown has no
-  // category dimension -- so type_l1/l2 grouping folds all Meta products
-  // into a single "—" row; the UI defaults Meta to SKU grouping instead.)
+  // literal "Uncategorized" group key so ungrouped/uncategorized spend
+  // still rolls up into one visible row instead of silently vanishing or
+  // fragmenting. (Meta rows are always null here -- its product_id
+  // breakdown has no category dimension -- so type_l1/l2 grouping folds
+  // all Meta products into a single "Uncategorized" row; the UI defaults
+  // Meta to SKU grouping instead.)
   const groupExpr =
     groupBy === "sku"
       ? "product_item_id"
       : groupBy === "type_l1"
-        ? "coalesce(product_type_l1, '—')"
-        : "coalesce(product_type_l1, '—') || '|' || coalesce(product_type_l2, '—')";
+        ? "coalesce(product_type_l1, 'Uncategorized')"
+        : "coalesce(product_type_l1, 'Uncategorized') || '|' || coalesce(product_type_l2, 'Uncategorized')";
 
   const { rows } = await pool.query(
     `select
@@ -368,20 +440,31 @@ metricsRouter.get("/products", asyncHandler(async (req, res) => {
     params
   );
 
-  const products: ProductPerformanceRow[] = rows.map((r) => ({
-    key: r.key,
-    productItemId: r.product_item_id,
-    productTitle: r.product_title,
-    productTypeL1: r.product_type_l1,
-    productTypeL2: r.product_type_l2,
-    skuCount: r.sku_count,
-    spend: r.spend,
-    impressions: r.impressions,
-    clicks: r.clicks,
-    conversions: r.conversions,
-    revenue: r.revenue,
-    ...computeDerivedMetrics(r),
-  }));
+  // True (website) revenue only makes sense per-SKU -- a category roll-up
+  // mixes multiple catalog items with different join keys into one row,
+  // so this stays null above the "sku" grain rather than summing a
+  // partial/misleading subset of it.
+  const websiteKeys = groupBy === "sku" ? await fetchShopifyRevenueByProductKeys(range.from, range.to) : null;
+
+  const products: ProductPerformanceRow[] = rows.map((r) => {
+    const websiteRevenue = websiteKeys && r.product_item_id ? websiteRevenueForProductItem(platform, r.product_item_id, websiteKeys) : null;
+    return {
+      key: r.key,
+      productItemId: r.product_item_id,
+      productTitle: r.product_title,
+      productTypeL1: r.product_type_l1,
+      productTypeL2: r.product_type_l2,
+      skuCount: r.sku_count,
+      spend: r.spend,
+      impressions: r.impressions,
+      clicks: r.clicks,
+      conversions: r.conversions,
+      revenue: r.revenue,
+      websiteRevenue,
+      websiteRoas: websiteRevenue != null ? (r.spend > 0 ? websiteRevenue / r.spend : null) : null,
+      ...computeDerivedMetrics(r),
+    };
+  });
 
   const grainSpend = products.reduce((s, p) => s + p.spend, 0);
   const campaignSpend = await campaignSpendForReconciliation(platform, range.from, range.to, campaignId);

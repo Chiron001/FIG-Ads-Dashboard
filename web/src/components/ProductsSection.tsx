@@ -3,6 +3,7 @@ import type { CampaignRow, ProductGroupBy, GrainPlatform, MetricsProductsRespons
 import type { DateRange } from "../lib/dateRanges";
 import { fetchProducts, fetchProductsPareto } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
+import { InfoNote } from "./InfoNote";
 
 interface Props {
   platform: GrainPlatform;
@@ -31,6 +32,8 @@ interface EnrichedProductRow {
   profit: number;
   pctOfSpend: number | null;
   pctOfRevenue: number | null;
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
 }
 
 const GOOGLE_GROUP_BY_OPTIONS: { value: ProductGroupBy; label: string }[] = [
@@ -53,7 +56,7 @@ function signClass(value: number): string {
 function productLabel(row: MetricsProductsResponse["products"][number]): string {
   if (row.productTitle) return row.productTitle;
   if (row.productTypeL1 && row.productTypeL2) return `${row.productTypeL1} — ${row.productTypeL2}`;
-  return row.productTypeL1 ?? row.key ?? "—";
+  return row.productTypeL1 ?? row.key ?? "N/A";
 }
 
 export function ProductsSection({ platform, range, grossMargin, campaigns, refreshKey }: Props) {
@@ -119,6 +122,8 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
         profit: p.revenue * grossMargin - p.spend,
         pctOfSpend: totalSpend > 0 ? p.spend / totalSpend : null,
         pctOfRevenue: totalRevenue > 0 ? p.revenue / totalRevenue : null,
+        websiteRevenue: p.websiteRevenue,
+        websiteRoas: p.websiteRoas,
       }))
       .sort((a, b) => b.spend - a.spend);
   }, [data, grossMargin, hideZeroSpend]);
@@ -167,13 +172,17 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
         </div>
       </div>
 
-      {/* Mandatory attribution caveat -- spec §1d, not optional. */}
-      <div className="mx-4 mt-3 rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
-        <span className="font-medium text-status-warning">Directional, not exact: </span>
-        {platform === "google"
-          ? "Revenue/orders here are attributed to the clicked product, not necessarily the one purchased -- a shopper who clicks a table lamp ad and buys a floor lamp is credited to the table lamp."
-          : "Revenue/orders here are attributed to the product shown in the clicked/viewed ad (via catalog/pixel matching), not necessarily the one purchased."}{" "}
-        Spend, impressions, and clicks are exact; ROAS per product is directional.
+      {/* Mandatory attribution caveat -- spec §1d, not optional, just no
+          longer a permanent full-width banner. */}
+      <div className="mx-4 mt-3 flex items-center gap-1.5 text-xs text-ink-muted">
+        <InfoNote tone="warning" label="Why ROAS here is directional">
+          {platform === "google"
+            ? "Revenue/orders are attributed to the clicked product, not necessarily the one purchased -- a shopper who clicks a table lamp ad and buys a floor lamp is credited to the table lamp."
+            : "Revenue/orders are attributed to the product shown in the clicked/viewed ad (via catalog/pixel matching), not necessarily the one purchased."}{" "}
+          Spend, impressions, and clicks are exact; ROAS per product is directional. Website Revenue/ROAS (at SKU
+          level) is Shopify's actual order revenue for that exact catalog item instead -- the true number.
+        </InfoNote>
+        Spend/impressions/clicks are exact; ROAS here is directional.
       </div>
 
       {data && (
@@ -249,6 +258,12 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
                 <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ROAS</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ACOS</th>
                 <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Profit</th>
+                {groupBy === "sku" && (
+                  <>
+                    <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website Revenue</th>
+                    <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website ROAS</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -272,6 +287,16 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatMultiplier(r.roas)}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.acos)}</td>
                   <td className={`px-4 py-2 text-right tabular-nums ${signClass(r.profit)}`}>{formatCurrency(r.profit)}</td>
+                  {groupBy === "sku" && (
+                    <>
+                      <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.websiteRevenue)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">
+                        <span className={r.websiteRoas != null && r.websiteRoas > 100 ? "text-status-warning" : undefined}>
+                          {formatMultiplier(r.websiteRoas)}
+                        </span>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>

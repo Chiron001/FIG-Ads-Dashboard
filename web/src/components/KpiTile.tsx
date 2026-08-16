@@ -42,8 +42,9 @@ export function KpiTile({ label, value, sublabel, accent, delta, deltaLabel, num
         type="button"
         onClick={() => setExplaining(true)}
         title={`How is ${label} computed?`}
-        className="group animate-fade-slide-in relative w-full rounded-xl border border-border bg-surface-1 px-4 py-3 text-left shadow-[var(--shadow-card)] transition-[transform,border-color] duration-[var(--duration-micro)] ease-[var(--ease-signature)] hover:-translate-y-0.5 hover:border-white/15 focus-visible:-translate-y-0.5"
+        className="glass group animate-fade-slide-in relative w-full overflow-hidden rounded-2xl px-4 py-3.5 text-left shadow-[var(--shadow-card)] transition-[transform,border-color] duration-[var(--duration-micro)] ease-[var(--ease-signature)] hover:-translate-y-0.5 hover:border-white/15 focus-visible:-translate-y-0.5"
         style={{
+          backgroundImage: `linear-gradient(155deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 45%), linear-gradient(200deg, color-mix(in oklab, ${accent ?? "var(--color-accent)"} 16%, transparent), transparent 60%)`,
           ...(accent ? { borderLeftColor: accent, borderLeftWidth: "3px" } : undefined),
           ...(staggerIndex !== undefined ? { animationDelay: `${staggerIndex * 40}ms` } : undefined),
         }}
@@ -66,7 +67,7 @@ export function KpiTile({ label, value, sublabel, accent, delta, deltaLabel, num
         {delta !== undefined && (
           <div className="mt-1 flex items-center gap-1 text-xs tabular-nums">
             {delta == null ? (
-              <span className="text-ink-muted">— {deltaLabel}</span>
+              <span className="text-ink-muted">N/A {deltaLabel}</span>
             ) : (
               <span className={delta > 0 ? "text-status-good" : delta < 0 ? "text-status-critical" : "text-ink-muted"}>
                 {delta > 0 ? "▲" : delta < 0 ? "▼" : ""} {delta >= 0 ? "+" : ""}

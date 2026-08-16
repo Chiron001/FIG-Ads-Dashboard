@@ -276,7 +276,7 @@ export function PlatformSection({
         <KpiTile label="AOV" value={formatCurrency(totals?.aov)} staggerIndex={13} />
       </div>
 
-      <div className="rounded-lg border border-border bg-surface-1 p-4">
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-ink-primary">{activeMetric.label} over time</h3>
           <div className="flex items-center gap-2">
@@ -312,7 +312,7 @@ export function PlatformSection({
 
       <CampaignTable campaigns={campaigns} grossMargin={grossMargin} targetRoas={targetRoas} platform={platform} range={range} />
 
-      <div className="rounded-lg border border-border bg-surface-1">
+      <div className="rounded-2xl border border-border bg-surface-1">
         <button
           type="button"
           onClick={() => setShowPortfolio((v) => !v)}
@@ -328,7 +328,7 @@ export function PlatformSection({
         </button>
         {showPortfolio && (
           <div className="border-t border-border p-4">
-            <PortfolioView platform={platform} range={range} grossMargin={grossMargin} color={color} refreshKey={refreshKey} />
+            <PortfolioView platform={platform} range={range} grossMargin={grossMargin} targetRoas={targetRoas} color={color} refreshKey={refreshKey} />
           </div>
         )}
       </div>
@@ -340,7 +340,7 @@ export function PlatformSection({
           hold, Myntra CSV-only). */}
       {(platform === "google" || platform === "meta") && (
         <>
-          <div className="rounded-lg border border-border bg-surface-1">
+          <div className="rounded-2xl border border-border bg-surface-1">
             <button type="button" onClick={() => setShowProducts((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
               <div>
                 <h3 className="text-sm font-semibold text-ink-primary">Products</h3>
@@ -361,22 +361,28 @@ export function PlatformSection({
             )}
           </div>
 
-          <div className="rounded-lg border border-border bg-surface-1">
-            <button type="button" onClick={() => setShowAds((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
-              <div>
-                <h3 className="text-sm font-semibold text-ink-primary">{platform === "google" ? "Ad Groups & Ads" : "Ad Sets & Ads"}</h3>
-                <p className="text-xs text-ink-muted">Spend broken down per {platform === "google" ? "ad group" : "ad set"} and individual ad/creative.</p>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showAds ? "rotate-180" : ""}`}>
-                <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            {showAds && (
-              <div className="border-t border-border">
-                <AdsSection platform={platform} range={range} grossMargin={grossMargin} targetRoas={targetRoas} campaigns={campaigns} refreshKey={refreshKey} />
-              </div>
-            )}
-          </div>
+          {/* Google only -- Meta's own ad-level breakdown lives in the
+              Creative Performance page now, which groups by the creative
+              itself rather than by ad set, so this generic ad-set/ad table
+              was redundant there. */}
+          {platform === "google" && (
+            <div className="rounded-2xl border border-border bg-surface-1">
+              <button type="button" onClick={() => setShowAds((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">
+                <div>
+                  <h3 className="text-sm font-semibold text-ink-primary">Ad Groups & Ads</h3>
+                  <p className="text-xs text-ink-muted">Spend broken down per ad group and individual ad/creative.</p>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`shrink-0 text-ink-muted transition-transform ${showAds ? "rotate-180" : ""}`}>
+                  <path d="M2 5.5L8 11.5L14 5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {showAds && (
+                <div className="border-t border-border">
+                  <AdsSection platform={platform} range={range} grossMargin={grossMargin} targetRoas={targetRoas} campaigns={campaigns} refreshKey={refreshKey} />
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

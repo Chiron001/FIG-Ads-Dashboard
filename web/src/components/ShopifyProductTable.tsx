@@ -11,9 +11,9 @@ interface Column {
 
 const COLUMNS: Column[] = [
   { key: "title", label: "Product", align: "left", format: (r) => r.title ?? r.productId },
-  { key: "sku", label: "SKU", align: "left", format: (r) => r.sku ?? "—" },
-  { key: "productType", label: "Type", align: "left", format: (r) => r.productType ?? "—" },
-  { key: "vendor", label: "Vendor", align: "left", format: (r) => r.vendor ?? "—" },
+  { key: "sku", label: "SKU", align: "left", format: (r) => r.sku ?? "N/A" },
+  { key: "productType", label: "Type", align: "left", format: (r) => r.productType ?? "N/A" },
+  { key: "vendor", label: "Vendor", align: "left", format: (r) => r.vendor ?? "N/A" },
   { key: "unitsSold", label: "Units Sold", align: "right", format: (r) => formatNumber(r.unitsSold) },
   { key: "orders", label: "Orders", align: "right", format: (r) => formatNumber(r.orders) },
   { key: "revenue", label: "Revenue", align: "right", format: (r) => formatCurrency(r.revenue) },
@@ -61,7 +61,7 @@ export function ShopifyProductTable({ products }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-surface-1">
+    <div className="rounded-2xl border border-border bg-surface-1">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold text-ink-primary">
           Products <span className="font-normal text-ink-muted">({sorted.length})</span>

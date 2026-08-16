@@ -1,4 +1,4 @@
-export type DateRangePreset = "yesterday" | "last7" | "last30" | "custom";
+export type DateRangePreset = "today" | "yesterday" | "last7" | "last30" | "custom";
 
 export interface DateRange {
   preset: DateRangePreset;
@@ -22,6 +22,8 @@ function addDaysISO(iso: string, days: number): string {
 export function presetRange(preset: Exclude<DateRangePreset, "custom">): DateRange {
   const today = istTodayISO();
   switch (preset) {
+    case "today":
+      return { preset, from: today, to: today };
     case "yesterday": {
       const y = addDaysISO(today, -1);
       return { preset, from: y, to: y };
@@ -34,9 +36,10 @@ export function presetRange(preset: Exclude<DateRangePreset, "custom">): DateRan
 }
 
 export const PRESET_LABELS: Record<Exclude<DateRangePreset, "custom">, string> = {
+  today: "Today",
   yesterday: "Yesterday",
   last7: "Last 7 Days",
   last30: "Last 30 Days",
 };
 
-export const PRESET_ORDER: Exclude<DateRangePreset, "custom">[] = ["yesterday", "last7", "last30"];
+export const PRESET_ORDER: Exclude<DateRangePreset, "custom">[] = ["today", "yesterday", "last7", "last30"];

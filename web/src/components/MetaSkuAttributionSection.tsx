@@ -4,10 +4,14 @@ import type { DateRange } from "../lib/dateRanges";
 import { fetchMetaSkuAttribution } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { normalizeStatus } from "../lib/campaignStatus";
+import { RankedBarChart } from "./RankedBarChart";
+import { KpiTile } from "./KpiTile";
+import { InfoNote } from "./InfoNote";
 
 interface Props {
   range: DateRange;
   refreshKey: number;
+  targetRoas: number;
 }
 
 type Level = "campaign" | "adSet" | "ad" | "sku";
@@ -41,7 +45,7 @@ function SkuBadge({ sku }: { sku: string | null }) {
 }
 
 function RoasCell({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-ink-muted">—</span>;
+  if (value == null) return <span className="text-ink-muted">N/A</span>;
   // Directional-attribution numbers can get extreme (see the caveat banner)
   // -- flag anything implausibly large rather than let it read as a real ratio.
   const extreme = value > 100;
@@ -67,7 +71,7 @@ const COLUMNS: Column[] = [
     // as real own properties -- only SkuGroupRowFlat doesn't, and this column
     // is never shown at the "sku" level anyway (see `levels` above).
     sortValue: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : null),
-    render: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : "—"),
+    render: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : "N/A"),
   },
   {
     key: "adSetName",
@@ -75,7 +79,7 @@ const COLUMNS: Column[] = [
     align: "left",
     levels: ["adSet", "ad"],
     sortValue: (r) => ("adSetName" in r ? ((r as AdSetRow).adSetName ?? (r as AdSetRow).adSetId) : null),
-    render: (r) => ("adSetName" in r ? ((r as AdSetRow).adSetName ?? (r as AdSetRow).adSetId) : "—"),
+    render: (r) => ("adSetName" in r ? ((r as AdSetRow).adSetName ?? (r as AdSetRow).adSetId) : "N/A"),
   },
   {
     key: "adName",
@@ -83,7 +87,7 @@ const COLUMNS: Column[] = [
     align: "left",
     levels: ["ad"],
     sortValue: (r) => ("adName" in r ? ((r as AdRowFlat).adName ?? (r as AdRowFlat).adId) : null),
-    render: (r) => ("adName" in r ? ((r as AdRowFlat).adName ?? (r as AdRowFlat).adId) : "—"),
+    render: (r) => ("adName" in r ? ((r as AdRowFlat).adName ?? (r as AdRowFlat).adId) : "N/A"),
   },
   {
     key: "adStatus",
@@ -91,7 +95,7 @@ const COLUMNS: Column[] = [
     align: "left",
     levels: ["ad"],
     sortValue: (r) => ("adStatus" in r ? normalizeStatus((r as AdRowFlat).adStatus).label : null),
-    render: (r) => ("adStatus" in r ? normalizeStatus((r as AdRowFlat).adStatus).label : "—"),
+    render: (r) => ("adStatus" in r ? normalizeStatus((r as AdRowFlat).adStatus).label : "N/A"),
   },
   {
     key: "sku",
@@ -108,9 +112,9 @@ const COLUMNS: Column[] = [
     levels: ["sku"],
     sortValue: (r) => ("productTitle" in r ? (r.productTitle ?? (r as SkuGroupRowFlat).sku) : null),
     render: (r) => {
-      if (!("productTitle" in r)) return "—";
+      if (!("productTitle" in r)) return "N/A";
       const g = r as SkuGroupRowFlat;
-      if (!g.productTitle) return <span className="text-ink-muted">—</span>;
+      if (!g.productTitle) return <span className="text-ink-muted">N/A</span>;
       // Flex row (not the cell's own `truncate`) so "+N more" always stays
       // visible -- only the title itself shrinks/truncates, matching how
       // many variants this SKU tag actually folded together is a fact
@@ -131,7 +135,7 @@ const COLUMNS: Column[] = [
     align: "right",
     levels: ["sku"],
     sortValue: (r) => ("adCount" in r ? r.adCount : null),
-    render: (r) => ("adCount" in r ? formatNumber(r.adCount) : "—"),
+    render: (r) => ("adCount" in r ? formatNumber(r.adCount) : "N/A"),
   },
   {
     key: "campaignCount",
@@ -139,7 +143,7 @@ const COLUMNS: Column[] = [
     align: "right",
     levels: ["sku"],
     sortValue: (r) => ("campaignCount" in r ? r.campaignCount : null),
-    render: (r) => ("campaignCount" in r ? formatNumber(r.campaignCount) : "—"),
+    render: (r) => ("campaignCount" in r ? formatNumber(r.campaignCount) : "N/A"),
   },
   {
     key: "spend",
@@ -287,7 +291,7 @@ function computeTotals(rows: AnyRow[]): Totals {
 
 /** Renders a Totals-row cell for a given column -- name/SKU/status/count
  * columns aren't summable (or, for adCount/campaignCount, would double-count
- * ads/campaigns shared across multiple SKU rows), so those show "—". */
+ * ads/campaigns shared across multiple SKU rows), so those show "N/A". */
 function renderTotalCell(colKey: string, totals: Totals): React.ReactNode {
   switch (colKey) {
     case "spend":
@@ -315,7 +319,7 @@ function renderTotalCell(colKey: string, totals: Totals): React.ReactNode {
     case "websiteRoas":
       return <RoasCell value={totals.websiteRoas} />;
     default:
-      return "—";
+      return "N/A";
   }
 }
 
@@ -329,7 +333,7 @@ function compareValues(av: number | string | null, bv: number | string | null, d
   return dir === "asc" ? cmp : -cmp;
 }
 
-export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
+export function MetaSkuAttributionSection({ range, refreshKey, targetRoas }: Props) {
   const [data, setData] = useState<MetaSkuAttributionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [level, setLevel] = useState<Level>("campaign");
@@ -337,6 +341,7 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedSku, setSelectedSku] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -402,6 +407,15 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
   // matching my search", not "total spend of everything".
   const totals = useMemo(() => computeTotals(sorted), [sorted]);
 
+  // Top-of-page chart + summary cards -- always keyed off the true,
+  // combined-per-SKU numbers (skuGroups), regardless of which level the
+  // table below is showing, since that's the only honest per-product ROAS.
+  const topSkus = useMemo(() => [...(data?.skuGroups ?? [])].sort((a, b) => b.spend - a.spend).slice(0, 8), [data]);
+  const selectedGroup = useMemo(() => data?.skuGroups.find((g) => g.sku === selectedSku) ?? null, [data, selectedSku]);
+  const summary = selectedGroup ?? computeTotals((data?.skuGroups ?? []).map((g) => ({ ...g, key: g.sku })));
+  const atOrAboveTarget = (data?.skuGroups ?? []).filter((g) => g.websiteRoas != null && g.websiteRoas >= targetRoas).length;
+  const matchedSkuCount = (data?.skuGroups ?? []).filter((g) => g.websiteRoas != null).length;
+
   function toggleSort(key: string) {
     if (key === sortKey) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -415,6 +429,63 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-display text-base text-ink-primary">Top SKUs by spend</h3>
+            <InfoNote label="How this chart works">
+              Bar length is that SKU's real total spend (every ad tagged with it, combined); color is its true Website
+              ROAS vs. the {formatMultiplier(targetRoas)} target -- red is below, green is at or above. Click a bar to see
+              that SKU's full breakdown below; click again (or nothing) to see the total across all matched SKUs.
+            </InfoNote>
+          </div>
+          <p className="text-xs text-ink-muted">
+            {matchedSkuCount > 0 ? (
+              <>
+                <span className="font-medium text-ink-primary">{atOrAboveTarget}</span> of {matchedSkuCount} SKUs at or
+                above target ROAS ({formatMultiplier(targetRoas)})
+              </>
+            ) : (
+              "No SKU has both spend and Shopify revenue yet"
+            )}
+          </p>
+        </div>
+        <RankedBarChart
+          items={topSkus.map((g) => ({
+            key: g.sku,
+            label: g.productTitle ?? g.sku,
+            sublabel: g.sku,
+            value: g.spend,
+            roas: g.websiteRoas,
+          }))}
+          targetRoas={targetRoas}
+          valueFormatter={(v) => formatCurrency(v)}
+          selectedKey={selectedSku}
+          onSelect={(key) => setSelectedSku((cur) => (cur === key ? null : key))}
+          emptyMessage="No tagged SKUs yet -- this fills in once ad names start with FIG-..."
+        />
+
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-ink-muted">
+          {selectedGroup ? (
+            <>
+              Showing <span className="font-medium text-ink-primary">{selectedGroup.productTitle ?? selectedGroup.sku}</span> ({selectedGroup.sku})
+            </>
+          ) : (
+            "Showing the total across every matched SKU"
+          )}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiTile label="Spend" value={formatCurrency(summary.spend)} numeric={summary.spend} numericFormat="currency" />
+          <KpiTile label="Clicks" value={formatNumber(summary.clicks)} numeric={summary.clicks} numericFormat="number" />
+          <KpiTile label="CPC" value={formatCurrency(summary.cpc)} />
+          <KpiTile label="CPA" value={formatCurrency(summary.cpa)} />
+          <KpiTile label="Meta Revenue" value={formatCurrency(summary.adsRevenue)} numeric={summary.adsRevenue} numericFormat="currency" />
+          <KpiTile label="Ads ROAS" value={formatMultiplier(summary.adsRoas)} />
+          <KpiTile label="Website Revenue" value={formatCurrency(summary.websiteRevenue)} numeric={summary.websiteRevenue} numericFormat="currency" />
+          <KpiTile label="Website ROAS" value={formatMultiplier(summary.websiteRoas)} sublabel={`target ${formatMultiplier(targetRoas)}`} />
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-md border border-border p-0.5 text-xs">
           {LEVEL_OPTIONS.map((opt) => (
@@ -458,27 +529,33 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
         )}
       </p>
 
-      {level === "sku" ? (
-        <div className="rounded-md border border-status-good/30 bg-status-good/10 px-3 py-2 text-xs text-ink-secondary">
-          <span className="font-medium text-status-good">This is the true number: </span>
-          Every ad tagged with a SKU (across every campaign and ad set) is combined into one row here, so Spend is that SKU's real
-          total spend and Website ROAS = that SKU's Shopify revenue ÷ its real total spend — not repeated at a different, distorted
-          value per ad. Use this tab, not the Campaign/Ad Set/Ad tabs, when you want one honest ROAS per product.
-        </div>
-      ) : (
-        <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
-          <span className="font-medium text-status-warning">Directional, not exact: </span>
-          Website Revenue is that SKU's <em>entire</em> Shopify revenue for the period, not revenue this specific ad/ad set/campaign
-          caused — if multiple ads share the same SKU tag, each shows that SKU's full total against only its own spend, not split.
-          Website ROAS gets extreme for very-low-spend or freshly-launched ads. For one honest ROAS per product, use the{" "}
-          <button type="button" onClick={() => setLevel("sku")} className="underline hover:text-ink-primary">
-            SKU (true ROAS)
-          </button>{" "}
-          tab instead.
-        </div>
-      )}
+      <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+        {level === "sku" ? (
+          <>
+            <InfoNote tone="good" label="Why this is the true number">
+              Every ad tagged with a SKU (across every campaign and ad set) is combined into one row here, so Spend is
+              that SKU's real total spend and Website ROAS = that SKU's Shopify revenue divided by its real total
+              spend, not repeated at a different, distorted value per ad.
+            </InfoNote>
+            This tab is the true number for one honest ROAS per product.
+          </>
+        ) : (
+          <>
+            <InfoNote tone="warning" label="Why this is directional, not exact">
+              Website Revenue is that SKU's entire Shopify revenue for the period, not revenue this specific ad/ad
+              set/campaign caused -- if multiple ads share the same SKU tag, each shows that SKU's full total against
+              only its own spend, not split. Website ROAS gets extreme for very-low-spend or freshly-launched ads.
+            </InfoNote>
+            This tab is directional, not exact. For one honest ROAS per product, use the{" "}
+            <button type="button" onClick={() => setLevel("sku")} className="underline hover:text-ink-primary">
+              SKU (true ROAS)
+            </button>{" "}
+            tab instead.
+          </>
+        )}
+      </div>
 
-      <div className={`rounded-lg border border-border bg-surface-1 ${loading ? "opacity-60" : ""}`}>
+      <div className={`rounded-2xl border border-border bg-surface-1 ${loading ? "opacity-60" : ""}`}>
         {sorted.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">{data ? "Nothing matches the current filters." : "Loading…"}</div>
         ) : (

@@ -7,6 +7,7 @@ import { PLATFORM_COLORS } from "../lib/platformColors";
 import { formatCurrency, formatMultiplier } from "../lib/format";
 import { PlatformIcon } from "./icons/PlatformIcon";
 import { usePrefersReducedMotion } from "../lib/motion";
+import { roasColor } from "../lib/roasColor";
 
 interface Props {
   range: DateRange;
@@ -37,26 +38,6 @@ const LANE_GAP = 5;
 const TOP_PAD = 6;
 const BOTTOM_PAD = 6;
 const MIN_LANE_H = 12; // a thin platform still reads as a real, visible lane
-
-/** Interpolates red -> amber -> green as roas goes from 0 to targetRoas to
- * 1.25x targetRoas -- "color shifting toward green where ROAS is strong,
- * red where it's weak" (spec §4), pivoted on the same Target ROAS the rest
- * of the dashboard already uses for its Scale/Maintain/Review verdict, so
- * the color here means the same thing it means everywhere else in the app. */
-function roasColor(roas: number | null, targetRoas: number): string {
-  if (roas == null || targetRoas <= 0) return "#6b7280";
-  const t = Math.max(0, Math.min(1, roas / (targetRoas * 1.25)));
-  return t < 0.5 ? mix("#f26d6d", "#e5a94e", t / 0.5) : mix("#e5a94e", "#4ade80", (t - 0.5) / 0.5);
-}
-function mix(hexA: string, hexB: string, t: number): string {
-  const a = hexToRgb(hexA);
-  const b = hexToRgb(hexB);
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
-}
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
 
 /** The signature element (UI/UX spec §4/§0): Total Spend -> the four
  * platforms -> Revenue, rendered as an animated proportional flow -- the

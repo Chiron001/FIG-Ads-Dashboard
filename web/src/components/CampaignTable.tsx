@@ -103,7 +103,7 @@ function RoasWithConfidence({ row }: { row: EnrichedRow }) {
 }
 
 function ReliabilityBadge({ row }: { row: EnrichedRow }) {
-  if (row.reliability.label == null) return <span className="text-ink-muted">—</span>;
+  if (row.reliability.label == null) return <span className="text-ink-muted">N/A</span>;
   const cls = row.reliability.label === "Stable" ? "text-status-good" : row.reliability.label === "Variable" ? "text-status-warning" : "text-status-critical";
   return (
     <span className={cls} title={`CV ${formatPercent(row.reliability.cv, 1)} on daily ROAS`}>
@@ -404,7 +404,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
   const columns = COLUMNS.filter((c) => c.tiers.includes(tier));
 
   return (
-    <div className="rounded-lg border border-border bg-surface-1">
+    <div className="rounded-2xl border border-border bg-surface-1">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold text-ink-primary">
           Campaigns <span className="font-normal text-ink-muted">({sorted.length})</span>
@@ -503,7 +503,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
                       key={col.key}
                       className={`whitespace-nowrap px-4 py-2 tabular-nums ${col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"}`}
                     >
-                      {col.key === "campaignName" ? "Total" : NO_SUMMARY_COLUMNS.has(col.key) ? "—" : col.render(summaryRow)}
+                      {col.key === "campaignName" ? "Total" : NO_SUMMARY_COLUMNS.has(col.key) ? "N/A" : col.render(summaryRow)}
                     </td>
                   ))}
                 </tr>

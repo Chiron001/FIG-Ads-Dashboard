@@ -70,7 +70,7 @@ export function CampaignDetailPanel({ platform, range, grossMargin, campaign, on
         </div>
         <div className="rounded-lg border border-border bg-surface-0 px-3 py-2.5">
           <div className="text-xs font-medium uppercase tracking-wide text-ink-muted">Reliability (ROAS)</div>
-          <div className="mt-1 text-lg font-semibold text-ink-primary">{campaign.reliability.label ?? "—"}</div>
+          <div className="mt-1 text-lg font-semibold text-ink-primary">{campaign.reliability.label ?? "N/A"}</div>
           <div className="mt-0.5 text-xs text-ink-muted">
             {campaign.reliability.cv != null ? `CV ${formatPercent(campaign.reliability.cv, 1)}` : "not enough daily history"}
           </div>

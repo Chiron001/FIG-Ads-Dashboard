@@ -78,7 +78,7 @@ export const env = {
   // reads these once as a starting point and lets the analyst override
   // live -- these are just the server-side defaults.
   grossMargin: Number(optional("GROSS_MARGIN") ?? 0.6),
-  targetRoas: Number(optional("TARGET_ROAS") ?? 4),
+  targetRoas: Number(optional("TARGET_ROAS") ?? 5.5),
 };
 
 export { required, optional };

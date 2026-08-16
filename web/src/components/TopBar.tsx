@@ -1,6 +1,6 @@
 import type { SyncLogEntry } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
-import { COMPARISON_LABELS, COMPARISON_MODE_ORDER, type ComparisonMode } from "../lib/comparisonRange";
+import { type ComparisonMode } from "../lib/comparisonRange";
 import { DateRangePicker } from "./DateRangePicker";
 import { SyncStatusDot } from "./SyncStatusDot";
 
@@ -16,9 +16,8 @@ interface Props {
   targetRoas: number;
   onTargetRoasChange: (v: number) => void;
   comparisonMode: ComparisonMode;
-  onComparisonModeChange: (v: ComparisonMode) => void;
   range: DateRange;
-  onRangeChange: (v: DateRange) => void;
+  onApplyDateAndComparison: (range: DateRange, comparisonMode: ComparisonMode) => void;
   onOpenPalette: () => void;
 }
 
@@ -37,9 +36,8 @@ export function TopBar({
   targetRoas,
   onTargetRoasChange,
   comparisonMode,
-  onComparisonModeChange,
   range,
-  onRangeChange,
+  onApplyDateAndComparison,
   onOpenPalette,
 }: Props) {
   return (
@@ -104,34 +102,7 @@ export function TopBar({
           </label>
         </div>
 
-        {comparisonMode !== "none" ? (
-          <button
-            type="button"
-            onClick={() => onComparisonModeChange("none")}
-            className="flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:border-accent/50"
-            title="Remove comparison"
-          >
-            vs {COMPARISON_LABELS[comparisonMode]}
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
-        ) : (
-          <select
-            value={comparisonMode}
-            onChange={(e) => onComparisonModeChange(e.target.value as ComparisonMode)}
-            title="Compare KPIs against another period"
-            className="rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-2 text-sm text-ink-secondary"
-          >
-            {COMPARISON_MODE_ORDER.map((mode) => (
-              <option key={mode} value={mode}>
-                {COMPARISON_LABELS[mode]}
-              </option>
-            ))}
-          </select>
-        )}
-
-        <DateRangePicker value={range} onChange={onRangeChange} />
+        <DateRangePicker value={range} comparisonMode={comparisonMode} onApply={onApplyDateAndComparison} />
       </div>
     </header>
   );

@@ -69,15 +69,12 @@
   --color-accent: #e5a94e;
   --color-accent-soft: rgba(229, 169, 78, 0.14);
 
-  /* Typography -- a characterful display serif for the title/section
-     headers ONLY, Inter for everything else UI, JetBrains Mono reserved for
-     hero numerals (KPI tiles, the flow band) where a data product earns a
-     little typographic personality. Dense table figures stay in Inter +
-     tabular numerals -- mono digits get cramped at 13px in a wide table. */
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-sans:
-    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* Two fonts, per spec -- Montserrat (primary: headings, nav, buttons,
+     hero numerals -- a geometric sans with enough weight to carry a title
+     or a KPI value) and Lato (secondary: body copy and dense table/data
+     text, where Montserrat's wider letterforms get cramped at 13px). */
+  --font-display: "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Lato", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* Motion -- one consistent easing curve everywhere, two duration bands
      (micro-interactions vs. the single hero moment). */
@@ -125,20 +122,21 @@ body {
   font-feature-settings: "tnum" 1;
 }
 
-/* Reserved for hero numerals only (KPI tile values, the flow band) --
-   NOT applied to dense table cells, where mono digits get cramped at small
-   sizes; those stay on Inter + .tabular-nums. */
+/* Reserved for hero numerals (KPI tile values, the flow band) -- Montserrat,
+   same as headings, so a KPI number carries the same weight as a title.
+   NOT applied to dense table cells, where Montserrat's wider letterforms
+   get cramped at 13px; those stay on Lato + .tabular-nums. */
 .font-hero-num {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
+  font-weight: 600;
   font-feature-settings: "tnum" 1;
   letter-spacing: -0.01em;
 }
 
-/* Display serif -- the dashboard title and section headers ONLY. A little
-   editorial warmth most dashboards skip entirely; used sparingly by design. */
+/* Headings, nav labels, buttons -- Montserrat (primary). */
 .font-display {
   font-family: var(--font-display);
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 

@@ -1,110 +1,108 @@
-import { useEffect, useState } from "react";
-import { Bar, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } from "recharts";
-import type { Platform, PortfolioResponse } from "@fig/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { Platform, PortfolioResponse, MetricsProductsResponse } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
-import { fetchPortfolio } from "../lib/api";
+import { fetchPortfolio, fetchProducts } from "../lib/api";
 import { formatCurrency, formatPercent } from "../lib/format";
+import { ParetoChart } from "./ParetoChart";
+import { RankedBarChart } from "./RankedBarChart";
 
 interface Props {
   platform: Platform;
   range: DateRange;
   grossMargin: number;
+  targetRoas: number;
   color: string;
   refreshKey: number;
 }
 
-export function PortfolioView({ platform, range, grossMargin, color, refreshKey }: Props) {
+/** Real spend is lumpy day to day -- "spend has happened more than ₹100 in
+ * a day" is read as an average-daily-spend floor (total spend over the
+ * range ÷ days in range), the only version of that rule the already-
+ * fetched, range-aggregated product data can answer without a new
+ * per-day-per-product endpoint. */
+function daysInRange(from: string, to: string): number {
+  const a = new Date(from + "T00:00:00Z").getTime();
+  const b = new Date(to + "T00:00:00Z").getTime();
+  return Math.max(1, Math.round((b - a) / (24 * 60 * 60 * 1000)) + 1);
+}
+
+export function PortfolioView({ platform, range, grossMargin, targetRoas, color, refreshKey }: Props) {
   const [data, setData] = useState<PortfolioResponse | null>(null);
+  const [products, setProducts] = useState<MetricsProductsResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchPortfolio(platform, range.from, range.to, grossMargin)
-      .then((res) => !cancelled && setData(res))
+    Promise.all([
+      fetchPortfolio(platform, range.from, range.to, grossMargin),
+      // Meta only -- Google's own product breakdown is already the
+      // "Products" section right below this one; pairing it here too
+      // would just repeat that view, not add a new lens.
+      platform === "meta" ? fetchProducts("meta", range.from, range.to, "sku") : Promise.resolve(null),
+    ])
+      .then(([portfolioRes, productsRes]) => {
+        if (cancelled) return;
+        setData(portfolioRes);
+        setProducts(productsRes);
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
   }, [platform, range.from, range.to, grossMargin, refreshKey]);
 
+  const days = daysInRange(range.from, range.to);
+  const catalogueSpendItems = useMemo(() => {
+    if (!products) return [];
+    // productItemId's shape varies per catalog entry (a storefront URL for
+    // some products, a raw numeric catalog id for others -- confirmed live)
+    // -- not something worth surfacing as a label either way, so this chart
+    // shows just the product name + spend + ROAS color, nothing else.
+    return products.products
+      .filter((p) => p.spend / days > 100)
+      .map((p) => ({ key: p.key, label: p.productTitle ?? p.key, value: p.spend, roas: p.websiteRoas ?? p.roas }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [products, days]);
+
   if (loading && !data) {
-    return <div className="rounded-lg border border-border bg-surface-1 px-4 py-8 text-center text-sm text-ink-muted">Loading portfolio…</div>;
+    return <div className="rounded-2xl border border-border bg-surface-1 px-4 py-8 text-center text-sm text-ink-muted">Loading portfolio…</div>;
   }
   if (!data || data.totalCampaigns === 0) {
-    return <div className="rounded-lg border border-border bg-surface-1 px-4 py-8 text-center text-sm text-ink-muted">No campaign data in this range.</div>;
+    return <div className="rounded-2xl border border-border bg-surface-1 px-4 py-8 text-center text-sm text-ink-muted">No campaign data in this range.</div>;
   }
+
+  const paretoItems = data.pareto.map((p) => ({ key: p.campaignId, label: p.campaignName ?? p.campaignId, value: p.revenue }));
+  const showCatalogueSpend = platform === "meta";
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-border bg-surface-1 p-4">
-        <div className="mb-1 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-ink-primary">Revenue concentration (Pareto)</h3>
-          <span className="text-xs text-ink-secondary tabular-nums">
-            <span className="font-semibold text-ink-primary">{data.campaignsToEightyPercent}</span> of {data.totalCampaigns} campaigns drive 80% of
-            revenue
-          </span>
+      <div className={`grid grid-cols-1 gap-4 ${showCatalogueSpend ? "lg:grid-cols-2" : ""}`}>
+        <div className="rounded-2xl border border-border bg-surface-1 p-4">
+          <h3 className="mb-1 text-sm font-semibold text-ink-primary">Revenue concentration (Pareto)</h3>
+          <ParetoChart items={paretoItems} color={color} unitLabel="campaigns" valueFormatter={(v) => formatCurrency(v, true)} />
         </div>
-        {/* Deliberate dual-axis chart -- this is the one well-established
-            exception to "never dual-axis": a Pareto chart's bar (revenue)
-            + cumulative-% line are conventionally paired and instantly
-            legible in that form; that's what was asked for. */}
-        <ResponsiveContainer width="100%" height={260}>
-          <ComposedChart data={data.pareto} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="var(--color-grid)" vertical={false} />
-            <XAxis dataKey="campaignName" tick={false} axisLine={{ stroke: "var(--color-axis)" }} tickLine={false} />
-            <YAxis
-              yAxisId="revenue"
-              tickFormatter={(v) => formatCurrency(v, true)}
-              stroke="var(--color-axis)"
-              tick={{ fill: "var(--color-ink-muted)", fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              width={64}
-            />
-            <YAxis
-              yAxisId="pct"
-              orientation="right"
-              domain={[0, 1]}
-              tickFormatter={(v) => formatPercent(v, 0)}
-              stroke="var(--color-axis)"
-              tick={{ fill: "var(--color-ink-muted)", fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              width={44}
-            />
-            <ReferenceLine yAxisId="pct" y={0.8} stroke="var(--color-status-warning)" strokeDasharray="4 3" />
-            <Tooltip
-              cursor={{ fill: "var(--color-surface-2)" }}
-              content={({ active, payload }) => {
-                if (!active || !payload || payload.length === 0) return null;
-                const p = payload[0]?.payload as (typeof data.pareto)[number] | undefined;
-                if (!p) return null;
-                return (
-                  <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs shadow-lg shadow-black/40">
-                    <div className="max-w-[200px] truncate font-medium text-ink-primary">{p.campaignName ?? p.campaignId}</div>
-                    <div className="mt-1 text-ink-secondary tabular-nums">
-                      {formatCurrency(p.revenue)} · cumulative {formatPercent(p.cumulativePct, 0)}
-                    </div>
-                  </div>
-                );
-              }}
-            />
-            <Bar yAxisId="revenue" dataKey="revenue" fill={color} radius={[2, 2, 0, 0]} isAnimationActive={false} />
-            <Line
-              yAxisId="pct"
-              type="monotone"
-              dataKey="cumulativePct"
-              stroke="var(--color-status-warning)"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+
+        {showCatalogueSpend && (
+          <div className="rounded-2xl border border-border bg-surface-1 p-4">
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-ink-primary">Product-wise catalogue spend</h3>
+              <span className="text-xs text-ink-muted">avg. spend {'>'} ₹100/day, colored by ROAS</span>
+            </div>
+            <div className="max-h-[240px] overflow-y-auto pr-1">
+              <RankedBarChart
+                items={catalogueSpendItems}
+                targetRoas={targetRoas}
+                valueFormatter={(v) => formatCurrency(v, true)}
+                emptyMessage="No product cleared ₹100/day average spend in this range."
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="rounded-lg border border-border bg-surface-1">
+      <div className="rounded-2xl border border-border bg-surface-1">
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-ink-primary">Profit contribution ranking</h3>
           <p className="mt-0.5 text-xs text-ink-muted">Ranked by absolute profit (revenue × margin − spend), not ROAS.</p>

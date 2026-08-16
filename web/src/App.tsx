@@ -18,7 +18,7 @@ import "./App.css";
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
 // /config resolves -- avoids a flash of "0" in the inputs on first paint.
 const FALLBACK_GROSS_MARGIN = 0.6;
-const FALLBACK_TARGET_ROAS = 4;
+const FALLBACK_TARGET_ROAS = 5.5;
 
 function App() {
   const [range, setRange] = useState<DateRange>(() => presetRange("last7"));
@@ -109,6 +109,11 @@ function App() {
     loadSyncStatus();
   }
 
+  function handleApplyDateAndComparison(nextRange: DateRange, nextComparisonMode: ComparisonMode) {
+    setRange(nextRange);
+    setComparisonMode(nextComparisonMode);
+  }
+
   // The signature flow band reads as "your whole spend picture" -- shown
   // on every ad-platform page (using the same global range), hidden on
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
@@ -144,9 +149,8 @@ function App() {
           targetRoas={targetRoas}
           onTargetRoasChange={setTargetRoas}
           comparisonMode={comparisonMode}
-          onComparisonModeChange={setComparisonMode}
           range={range}
-          onRangeChange={setRange}
+          onApplyDateAndComparison={handleApplyDateAndComparison}
           onOpenPalette={() => setPaletteOpen(true)}
         />
 
@@ -182,11 +186,12 @@ function App() {
               lastSync={lastSync}
               onSyncComplete={handleSyncComplete}
               refreshKey={refreshKey}
+              targetRoas={targetRoas}
             />
           ) : isMetaSkuAttribution ? (
-            <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} />
+            <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : isMetaCreativePerformance ? (
-            <MetaCreativePerformanceSection key="meta-creative-performance" range={range} refreshKey={refreshKey} />
+            <MetaCreativePerformanceSection key="meta-creative-performance" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : (
             <PlatformSection
               key={activeSelection}

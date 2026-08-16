@@ -602,6 +602,108 @@ Build proceeds phase by phase per the project spec, committing after each.
         pass): PNG chart export, a comfortable/compact density toggle, a
         full command-palette campaign-name index, and per-chart screen-
         reader table fallbacks.
+- [x] **UI/UX iteration 2 — a batch of 17 targeted changes** against the
+      redesign above, driven by direct screenshot annotations. Both `/web`
+      and `/server` changed this round (two of these needed a real new
+      join, not just styling).
+      - **Date range + comparison merged into one control with an Apply
+        button** (`DateRangePicker.tsx`) -- picking a preset or a
+        comparison period used to fire a fetch immediately; now both are a
+        draft until Apply, so changing your mind about one doesn't cost a
+        round-trip for the other. Added a "Today" preset.
+      - **KPI tiles are glass now, with a per-platform gradient tint** --
+        an explicit reversal of the first pass's "data surfaces stay
+        solid" rule, on direct instruction. `color-mix()` builds the tint
+        from each card's own accent color (or the app accent as a
+        fallback) so it stays correct without a second color prop.
+      - **True (website) ROAS added to the Products section**, both
+        platforms. Neither platform's catalog `product_item_id` is the
+        Shopify SKU string -- confirmed live: Meta's is usually
+        `/products/{handle}#product` (sometimes a bare numeric catalog id
+        instead, which the regex simply doesn't match rather than
+        guessing), Google's is `shopify_zz_{productId}_{variantId}` (the
+        numeric halves of the `gid://shopify/...` ids). Both correctly
+        decode into a real Shopify identifier and join against
+        `fact_shopify_line_items` (`websiteRevenueForProductItem` in
+        `server/src/routes/metrics.ts`) -- verified live: 64 of 405 Meta
+        products and 27 of 35 Google products matched. Website
+        Revenue/ROAS only populate at SKU-level grouping (a category
+        roll-up mixes join keys). Also fixed a real bug this surfaced: the
+        uncategorized-product group-key fallback was the literal string
+        `"—"`, which rendered as-is in the Category/Product column.
+      - **Portfolio analysis Pareto chart resized to half-width**, paired
+        with a new **Product-wise Catalogue Spend** bar chart (Meta only)
+        showing products averaging over ₹100/day spend, colored by ROAS.
+        Both extracted into reusable `ParetoChart.tsx` / `RankedBarChart.tsx`
+        so the same two chart shapes now back four different sections
+        instead of being rebuilt per page.
+      - **Removed the generic Ad Sets & Ads table from Meta's page** --
+        redundant with Creative Performance's per-creative view, which
+        replaced it. Google keeps its Ad Groups & Ads table (no equivalent
+        page exists for it).
+      - **SKU Attribution: a "Top SKUs by spend" bar chart + 8 summary
+        cards** (Spend/Clicks/CPC/CPA/Meta Revenue/Ads ROAS/Website
+        Revenue/Website ROAS) built entirely from data the route already
+        returned -- no backend change needed. Click a bar to pin the
+        cards to that SKU; nothing selected shows the total across every
+        matched SKU. Added an "N of M SKUs at/above target ROAS" stat,
+        the concrete tie-in for the new 5.5x target.
+      - **Creative Performance rebuilt around one flat, creative-grouped
+        table** instead of four Campaign/Ad Set/Ad/Product tabs -- every ad
+        sharing the exact same parsed tag (SKU + format + angle + style +
+        gender + version + variant) is one row, combined across however
+        many ads/campaigns it's placed in. Website Revenue is taken once
+        per group, not summed across its ads (the same SKU-sharing
+        distortion the rest of the app already guards against, just at a
+        new grain). A "Top creatives" bar chart sits above it, rankable by
+        spend or either ROAS. The Product tab was dropped outright -- SKU
+        Attribution's enhanced true-ROAS view already covers that need,
+        so keeping a second copy here was the redundancy the user asked
+        to cut.
+      - **Target ROAS default raised to 5.5x** everywhere a default is
+        read from: the client fallback, the server `.env` default, and
+        the actual Railway `TARGET_ROAS` variable (was explicitly set to
+        4, which would have silently overridden the code change --
+        checked and updated via `railway variables --set`, not assumed).
+      - **No more em dash as an empty-value placeholder.** `format.ts`'s
+        `EMPTY` constant (the single source nearly every table cell
+        renders through) changed from `"—"` to `"N/A"`, plus ~15 more
+        hardcoded occurrences across components that didn't route through
+        it. Left untouched: em dashes used as actual sentence punctuation
+        in prose/banners (that's just how people write, not a
+        placeholder) and the CI-range en dash in `statsFormat.ts`
+        (different character, different job). Favicon replaced too -- the
+        old one was a generic abstract mark that didn't read as FIG's;
+        new one is a simple lowercase "f" in the app's own amber accent.
+      - **Fonts: Montserrat (primary, headings/nav/hero numerals) + Lato
+        (secondary, body/table text)** -- replaces the first pass's
+        Fraunces/Inter/JetBrains Mono trio, per explicit "use 2 fonts."
+      - **Info-button pattern replacing full-width caveat banners**
+        (`InfoNote.tsx`) -- a small "i" trigger opens a glass popover with
+        the same text instead of a permanently-visible bar. Applied across
+        `AttributionBanner`, Products, SKU Attribution, Creative
+        Performance, and Shopify.
+      - **Sidebar collapse toggle moved to the top**, next to the logo
+        (was buried at the bottom). Fixed a real gap the redesign left
+        behind: Meta's SKU Attribution / Creative Performance sub-items
+        vanished entirely in collapsed (icon-only) mode -- now render as
+        small icon-only buttons with a tooltip, reachable at either width.
+      - **Shopify page: blended ROAS/ACOS + a product-revenue Pareto
+        chart.** ROAS/ACOS here are the one deliberate exception to "never
+        sum platforms" -- Google + Meta spend combined against this page's
+        real website revenue, because "what did all ad spend return on
+        the store" is genuinely the question on this specific page (the
+        rest of the app still never blends).
+      - **Verified**: full monorepo build + 87 server tests green (5 more
+        than the first pass's count came from work already logged);
+        oxlint clean; live-curled both platforms' new website-revenue
+        matching before wiring the frontend to it; re-verified the
+        creative-grouping logic against real tagged data (temporarily
+        wrapping 3 ads in `$...$` in Postgres, same verification pattern
+        as the Creative Performance feature itself, then restoring);
+        screenshot-checked the merged date/comparison picker, the
+        collapsed-sidebar fix, an open InfoNote popover, and the paired
+        Pareto/catalogue-spend charts, all with zero console errors.
 
 ## Structure
 

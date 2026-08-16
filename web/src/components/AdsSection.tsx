@@ -171,7 +171,7 @@ export function AdsSection({ platform, range, grossMargin, targetRoas, campaigns
                     <td className="max-w-[220px] truncate px-4 py-2 font-medium text-ink-primary" title={adLabel(a)}>
                       {adLabel(a)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2 text-ink-secondary">{a.adType ?? "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-ink-secondary">{a.adType ?? "N/A"}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-ink-secondary">{status.label}</td>
                     <td className="max-w-[160px] truncate px-4 py-2 text-ink-secondary" title={a.adGroupName ?? a.adGroupId}>
                       {a.adGroupName ?? a.adGroupId}

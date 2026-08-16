@@ -15,15 +15,15 @@ export const CONFIDENCE_TONE: Record<StatsConfidence, "good" | "warning" | "crit
   insufficient: "muted",
 };
 
-/** CI on CVR rendered as "p% [low–high]" (spec §3a) -- "—" when confidence
+/** CI on CVR rendered as "p% [low–high]" (spec §3a) -- "N/A" when confidence
  * is insufficient, per the global rule (spec §0/§8): never show an
  * inferential number the sample size can't support. */
 export function formatCVRWithCI(cvr: number | null | undefined, ci: { low: number; high: number; confidence: StatsConfidence } | null): string {
-  if (ci == null || ci.confidence === "insufficient") return "—";
+  if (ci == null || ci.confidence === "insufficient") return "N/A";
   return `${formatPercent(cvr)} [${formatPercent(ci.low)}–${formatPercent(ci.high)}]`;
 }
 
 export function formatBudgetCeiling(value: number | null | undefined): string {
-  if (value == null) return "—";
+  if (value == null) return "N/A";
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
 }

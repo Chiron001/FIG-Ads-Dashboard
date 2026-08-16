@@ -1,308 +1,62 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  MetaCreativePerformanceResponse,
-  MetaCreativeAdRow,
-  MetaCreativeAdSetGroup,
-  MetaCreativeCampaignGroup,
-  MetaCreativeProductGroup,
-} from "@fig/shared";
+import type { MetaCreativePerformanceResponse, MetaCreativeAdRow } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchMetaCreativePerformance } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { normalizeStatus } from "../lib/campaignStatus";
+import { RankedBarChart } from "./RankedBarChart";
+import { InfoNote } from "./InfoNote";
 
 interface Props {
   range: DateRange;
   refreshKey: number;
+  targetRoas: number;
 }
-
-type Level = "campaign" | "adSet" | "ad" | "product";
-
-// Flat row shapes per level -- each carries its parent names so the Ad Set
-// and Ad views can show "which campaign/ad set is this" without nesting.
-interface CampaignRow extends MetaCreativeCampaignGroup {
-  key: string;
-}
-interface AdSetRow extends MetaCreativeAdSetGroup {
-  key: string;
-  campaignId: string;
-  campaignName: string | null;
-}
-interface AdRowFlat extends MetaCreativeAdRow {
-  key: string;
-  campaignId: string;
-  campaignName: string | null;
-  adSetId: string;
-  adSetName: string | null;
-}
-interface ProductRowFlat extends MetaCreativeProductGroup {
-  key: string;
-}
-
-type AnyRow = CampaignRow | AdSetRow | AdRowFlat | ProductRowFlat;
 
 function SkuBadge({ sku }: { sku: string | null }) {
-  if (!sku) return <span className="text-xs italic text-ink-muted">no SKU tag</span>;
+  if (!sku) return <span className="text-xs italic text-ink-muted">not tagged</span>;
   return <span className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-secondary">{sku}</span>;
 }
 
-/** Small neutral pill for a parsed tag field -- format/angle/style/gender
- * are all the same "one of a fixed enum, or not tagged" shape. */
 function TagPill({ value }: { value: string | null }) {
-  if (!value) return <span className="text-ink-muted">—</span>;
+  if (!value) return <span className="text-ink-muted">N/A</span>;
   return <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-secondary">{value}</span>;
 }
 
 function RoasCell({ value }: { value: number | null }) {
-  if (value == null) return <span className="text-ink-muted">—</span>;
-  // Directional-attribution numbers can get extreme (see the caveat banner)
-  // -- flag anything implausibly large rather than let it read as a real ratio.
+  if (value == null) return <span className="text-ink-muted">N/A</span>;
   const extreme = value > 100;
   return <span className={extreme ? "text-status-warning" : undefined}>{formatMultiplier(value)}</span>;
-}
-
-interface Column {
-  key: string;
-  label: string;
-  align: "left" | "right";
-  levels: Level[]; // which level(s) this column applies to
-  sortValue: (r: AnyRow) => number | string | null;
-  render: (r: AnyRow) => React.ReactNode;
-}
-
-const COLUMNS: Column[] = [
-  {
-    key: "campaignName",
-    label: "Campaign",
-    align: "left",
-    levels: ["campaign", "adSet", "ad"],
-    sortValue: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : null),
-    render: (r) => ("campaignName" in r ? (r.campaignName ?? r.campaignId) : "—"),
-  },
-  {
-    key: "adSetName",
-    label: "Ad Set",
-    align: "left",
-    levels: ["adSet", "ad"],
-    sortValue: (r) => ("adSetName" in r ? ((r as AdSetRow).adSetName ?? (r as AdSetRow).adSetId) : null),
-    render: (r) => ("adSetName" in r ? ((r as AdSetRow).adSetName ?? (r as AdSetRow).adSetId) : "—"),
-  },
-  {
-    key: "adName",
-    label: "Ad",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("adName" in r ? ((r as AdRowFlat).adName ?? (r as AdRowFlat).adId) : null),
-    render: (r) => ("adName" in r ? ((r as AdRowFlat).adName ?? (r as AdRowFlat).adId) : "—"),
-  },
-  {
-    key: "adStatus",
-    label: "Status",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("adStatus" in r ? normalizeStatus((r as AdRowFlat).adStatus).label : null),
-    render: (r) => ("adStatus" in r ? normalizeStatus((r as AdRowFlat).adStatus).label : "—"),
-  },
-  {
-    key: "sku",
-    label: "SKU",
-    align: "left",
-    levels: ["ad", "product"],
-    sortValue: (r) => ("sku" in r ? (r as AdRowFlat | ProductRowFlat).sku : null),
-    render: (r) => <SkuBadge sku={"sku" in r ? (r as AdRowFlat | ProductRowFlat).sku : null} />,
-  },
-  {
-    key: "productTitle",
-    label: "Product Name",
-    align: "left",
-    levels: ["product"],
-    sortValue: (r) => ("productTitle" in r ? (r.productTitle ?? (r as ProductRowFlat).sku) : null),
-    render: (r) => {
-      if (!("productTitle" in r)) return "—";
-      const g = r as ProductRowFlat;
-      if (!g.productTitle) return <span className="text-ink-muted">—</span>;
-      return (
-        <span className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate" title={g.productTitle}>
-            {g.productTitle}
-          </span>
-          {g.variantCount > 1 && <span className="shrink-0 text-xs text-ink-muted">+{g.variantCount - 1} more</span>}
-        </span>
-      );
-    },
-  },
-  {
-    key: "format",
-    label: "Format",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("format" in r ? r.format : null),
-    render: (r) => <TagPill value={"format" in r ? r.format : null} />,
-  },
-  {
-    key: "angle",
-    label: "Angle",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("angle" in r ? r.angle : null),
-    render: (r) => <TagPill value={"angle" in r ? r.angle : null} />,
-  },
-  {
-    key: "style",
-    label: "Style",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("style" in r ? r.style : null),
-    render: (r) => <TagPill value={"style" in r ? r.style : null} />,
-  },
-  {
-    key: "gender",
-    label: "Gender",
-    align: "left",
-    levels: ["ad"],
-    sortValue: (r) => ("gender" in r ? r.gender : null),
-    render: (r) => <TagPill value={"gender" in r ? r.gender : null} />,
-  },
-  {
-    key: "version",
-    label: "Version",
-    align: "right",
-    levels: ["ad"],
-    sortValue: (r) => ("version" in r ? r.version : null),
-    render: (r) => ("version" in r && r.version != null ? `v${r.version}` : <span className="text-ink-muted">—</span>),
-  },
-  {
-    key: "variant",
-    label: "Variant",
-    align: "right",
-    levels: ["ad"],
-    sortValue: (r) => ("variant" in r ? r.variant : null),
-    render: (r) => ("variant" in r && r.variant != null ? `n${r.variant}` : <span className="text-ink-muted">—</span>),
-  },
-  {
-    key: "creativeCount",
-    label: "Creatives",
-    align: "right",
-    levels: ["product"],
-    sortValue: (r) => ("creativeCount" in r ? r.creativeCount : null),
-    render: (r) => ("creativeCount" in r ? formatNumber(r.creativeCount) : "—"),
-  },
-  {
-    key: "campaignCount",
-    label: "Campaigns",
-    align: "right",
-    levels: ["product"],
-    sortValue: (r) => ("campaignCount" in r ? r.campaignCount : null),
-    render: (r) => ("campaignCount" in r ? formatNumber(r.campaignCount) : "—"),
-  },
-  {
-    key: "spend",
-    label: "Spend",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.spend,
-    render: (r) => formatCurrency(r.spend),
-  },
-  {
-    key: "impressions",
-    label: "Impr.",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.impressions,
-    render: (r) => formatNumber(r.impressions),
-  },
-  {
-    key: "clicks",
-    label: "Clicks",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.clicks,
-    render: (r) => formatNumber(r.clicks),
-  },
-  { key: "ctr", label: "CTR", align: "right", levels: ["campaign", "adSet", "ad", "product"], sortValue: (r) => r.ctr, render: (r) => formatPercent(r.ctr) },
-  { key: "cvr", label: "CVR", align: "right", levels: ["campaign", "adSet", "ad", "product"], sortValue: (r) => r.cvr, render: (r) => formatPercent(r.cvr) },
-  { key: "cpc", label: "CPC", align: "right", levels: ["campaign", "adSet", "ad", "product"], sortValue: (r) => r.cpc, render: (r) => formatCurrency(r.cpc) },
-  { key: "cpa", label: "CPA", align: "right", levels: ["campaign", "adSet", "ad", "product"], sortValue: (r) => r.cpa, render: (r) => formatCurrency(r.cpa) },
-  {
-    key: "conversions",
-    label: "Orders",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.conversions,
-    render: (r) => formatNumber(r.conversions),
-  },
-  {
-    key: "adsRevenue",
-    label: "Ads Revenue",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.adsRevenue,
-    render: (r) => formatCurrency(r.adsRevenue),
-  },
-  {
-    key: "adsRoas",
-    label: "Ads ROAS",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.adsRoas,
-    render: (r) => <RoasCell value={r.adsRoas} />,
-  },
-  {
-    key: "websiteRevenue",
-    label: "Website Revenue",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.websiteRevenue,
-    render: (r) => formatCurrency(r.websiteRevenue),
-  },
-  {
-    key: "websiteRoas",
-    label: "Website ROAS",
-    align: "right",
-    levels: ["campaign", "adSet", "ad", "product"],
-    sortValue: (r) => r.websiteRoas,
-    render: (r) => <RoasCell value={r.websiteRoas} />,
-  },
-];
-
-const SEARCH_PLACEHOLDER: Record<Level, string> = {
-  campaign: "Search campaign…",
-  adSet: "Search campaign or ad set…",
-  ad: "Search campaign, ad set, ad, or SKU…",
-  product: "Search SKU or product name…",
-};
-
-const LEVEL_OPTIONS: { value: Level; label: string }[] = [
-  { value: "campaign", label: "Campaign" },
-  { value: "adSet", label: "Ad Set" },
-  { value: "ad", label: "Creative (Ad)" },
-  { value: "product", label: "Product (true ROAS)" },
-];
-
-function matchesSearch(row: AnyRow, level: Level, term: string): boolean {
-  if (!term) return true;
-  const haystacks: (string | null | undefined)[] = [];
-  if ("campaignName" in row) haystacks.push(row.campaignName, row.campaignId);
-  if ("adSetName" in row) haystacks.push(row.adSetName, row.adSetId);
-  if (level === "ad") haystacks.push((row as AdRowFlat).adName, (row as AdRowFlat).adId, (row as AdRowFlat).sku);
-  if (level === "product") haystacks.push((row as ProductRowFlat).sku, (row as ProductRowFlat).productTitle);
-  return haystacks.some((h) => h?.toLowerCase().includes(term));
 }
 
 function safeDivide(n: number, d: number): number | null {
   return d > 0 ? n / d : null;
 }
 
-interface PerfFields {
-  spend: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
-  adsRevenue: number;
-  websiteRevenue: number | null;
-}
-
-interface Rollup {
+/** One row per distinct CREATIVE -- every ad sharing the exact same parsed
+ * tag (sku + format + angle + style + gender + version + variant) is one
+ * creative reused across however many ads/ad sets/campaigns it's placed
+ * in, combined into one row here instead of shown once per placement.
+ * websiteRevenue/websiteRoas are NOT summed across the group's ads --
+ * every ad sharing one SKU carries that SKU's identical full total (see
+ * the ads-attribution caveat elsewhere in the app), so summing them would
+ * multiply the same number by however many ads used this creative. Taken
+ * once instead, then divided by the group's real combined spend. */
+interface CreativeGroup {
+  creativeKey: string;
+  sku: string;
+  productTitle: string | null;
+  format: string | null;
+  angle: string | null;
+  style: string | null;
+  gender: string | null;
+  version: number | null;
+  variant: number | null;
+  statusSummary: string;
+  adCount: number;
+  adSetCount: number;
+  campaignCount: number;
+  adNames: string[];
   spend: number;
   impressions: number;
   clicks: number;
@@ -317,17 +71,91 @@ interface Rollup {
   websiteRoas: number | null;
 }
 
-/** Weighted rollup (sum/sum, never averaged) over any set of rows carrying
- * the standard performance fields -- used for both the pinned Total row
- * (any level) and the attribute breakdown panel (Creative level only). */
-function rollUpPerf<T extends PerfFields>(rows: T[]): Rollup {
+interface FlatAd extends MetaCreativeAdRow {
+  campaignId: string;
+  campaignName: string | null;
+  adSetId: string;
+  adSetName: string | null;
+}
+
+function groupByCreative(ads: FlatAd[], productTitleForSku: (sku: string) => string | null): CreativeGroup[] {
+  const groups = new Map<string, FlatAd[]>();
+  for (const ad of ads) {
+    if (!ad.tagged || !ad.sku) continue; // an ungrouped ad has no creative identity to group by
+    const key = [ad.sku, ad.format, ad.angle, ad.style, ad.gender, ad.version, ad.variant].join("|");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(ad);
+  }
+
+  return [...groups.entries()].map(([creativeKey, members]): CreativeGroup => {
+    const first = members[0];
+    const spend = members.reduce((s, a) => s + a.spend, 0);
+    const impressions = members.reduce((s, a) => s + a.impressions, 0);
+    const clicks = members.reduce((s, a) => s + a.clicks, 0);
+    const conversions = members.reduce((s, a) => s + a.conversions, 0);
+    const adsRevenue = members.reduce((s, a) => s + a.adsRevenue, 0);
+    // Identical across every member by construction (same sku) -- take
+    // once, not summed.
+    const websiteRevenue = first.websiteRevenue;
+    const statuses = new Set(members.map((a) => normalizeStatus(a.adStatus).label));
+
+    return {
+      creativeKey,
+      sku: first.sku!,
+      productTitle: productTitleForSku(first.sku!),
+      format: first.format,
+      angle: first.angle,
+      style: first.style,
+      gender: first.gender,
+      version: first.version,
+      variant: first.variant,
+      statusSummary: statuses.size === 1 ? [...statuses][0] : `${statuses.size} statuses`,
+      adCount: members.length,
+      adSetCount: new Set(members.map((a) => a.adSetId)).size,
+      campaignCount: new Set(members.map((a) => a.campaignId)).size,
+      adNames: members.map((a) => a.adName ?? a.adId),
+      spend,
+      impressions,
+      clicks,
+      conversions,
+      ctr: safeDivide(clicks, impressions),
+      cvr: safeDivide(conversions, clicks),
+      cpc: safeDivide(spend, clicks),
+      cpa: safeDivide(spend, conversions),
+      adsRevenue,
+      adsRoas: safeDivide(adsRevenue, spend),
+      websiteRevenue,
+      websiteRoas: websiteRevenue != null ? safeDivide(websiteRevenue, spend) : null,
+    };
+  });
+}
+
+interface Totals {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  cpa: number | null;
+  adsRevenue: number;
+  adsRoas: number | null;
+}
+
+/** Weighted rollup (sum/sum, never averaged) for the pinned Total row --
+ * ads-side fields only. Website Revenue/ROAS deliberately excluded: two
+ * creatives can share one SKU, and each already carries that SKU's full
+ * total, so summing across creative rows would multiply real revenue by
+ * however many creatives happen to share a product -- there's no way to
+ * total it here that isn't misleading. The SKU Attribution page's
+ * "SKU (true ROAS)" tab is the one place that number is safe to total. */
+function computeTotals(rows: CreativeGroup[]): Totals {
   const spend = rows.reduce((s, r) => s + r.spend, 0);
   const impressions = rows.reduce((s, r) => s + r.impressions, 0);
   const clicks = rows.reduce((s, r) => s + r.clicks, 0);
   const conversions = rows.reduce((s, r) => s + r.conversions, 0);
   const adsRevenue = rows.reduce((s, r) => s + r.adsRevenue, 0);
-  const matched = rows.filter((r) => r.websiteRevenue != null);
-  const websiteRevenue = matched.length > 0 ? matched.reduce((s, r) => s + (r.websiteRevenue ?? 0), 0) : null;
   return {
     spend,
     impressions,
@@ -339,155 +167,40 @@ function rollUpPerf<T extends PerfFields>(rows: T[]): Rollup {
     cpa: safeDivide(spend, conversions),
     adsRevenue,
     adsRoas: safeDivide(adsRevenue, spend),
-    websiteRevenue,
-    websiteRoas: websiteRevenue != null ? safeDivide(websiteRevenue, spend) : null,
   };
 }
 
-/** Renders a Totals-row cell for a given column -- name/SKU/status/tag/count
- * columns aren't summable, so those show "—". */
-function renderTotalCell(colKey: string, totals: Rollup): React.ReactNode {
-  switch (colKey) {
-    case "spend":
-      return formatCurrency(totals.spend);
-    case "impressions":
-      return formatNumber(totals.impressions);
-    case "clicks":
-      return formatNumber(totals.clicks);
-    case "ctr":
-      return formatPercent(totals.ctr);
-    case "cvr":
-      return formatPercent(totals.cvr);
-    case "cpc":
-      return formatCurrency(totals.cpc);
-    case "cpa":
-      return formatCurrency(totals.cpa);
-    case "conversions":
-      return formatNumber(totals.conversions);
-    case "adsRevenue":
-      return formatCurrency(totals.adsRevenue);
-    case "adsRoas":
-      return <RoasCell value={totals.adsRoas} />;
-    case "websiteRevenue":
-      return formatCurrency(totals.websiteRevenue);
-    case "websiteRoas":
-      return <RoasCell value={totals.websiteRoas} />;
-    default:
-      return "—";
-  }
+function creativeName(g: CreativeGroup): string {
+  return [g.sku, g.format, g.angle, g.style, g.gender, g.version != null ? `v${g.version}` : null, g.variant != null ? `n${g.variant}` : null]
+    .filter(Boolean)
+    .join("_");
 }
 
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
   const aNull = av == null;
   const bNull = bv == null;
   if (aNull && bNull) return 0;
-  if (aNull) return 1; // nulls always sort last
+  if (aNull) return 1;
   if (bNull) return -1;
   const cmp = typeof av === "string" || typeof bv === "string" ? String(av).localeCompare(String(bv)) : av < bv ? -1 : av > bv ? 1 : 0;
   return dir === "asc" ? cmp : -cmp;
 }
 
-// --- "Which type of creative performs best" breakdown (Creative level only) -
-
-type AttributeDimension = "format" | "angle" | "style" | "gender";
-
-const DIMENSION_OPTIONS: { value: AttributeDimension; label: string }[] = [
-  { value: "format", label: "Format" },
-  { value: "angle", label: "Angle" },
-  { value: "style", label: "Style" },
-  { value: "gender", label: "Gender" },
+type RankMetric = "spend" | "adsRoas" | "websiteRoas";
+const RANK_OPTIONS: { value: RankMetric; label: string }[] = [
+  { value: "spend", label: "Spend" },
+  { value: "adsRoas", label: "Ads ROAS" },
+  { value: "websiteRoas", label: "Website ROAS" },
 ];
 
-interface AttributeBreakdownRow extends Rollup {
-  value: string;
-  creativeCount: number;
-}
-
-function computeAttributeBreakdown(ads: AdRowFlat[], dim: AttributeDimension): AttributeBreakdownRow[] {
-  const groups = new Map<string, AdRowFlat[]>();
-  for (const ad of ads) {
-    const key = ad[dim] ?? "Not tagged";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(ad);
-  }
-  return [...groups.entries()]
-    .map(([value, adsInGroup]) => ({ value, creativeCount: adsInGroup.length, ...rollUpPerf(adsInGroup) }))
-    .sort((a, b) => b.spend - a.spend);
-}
-
-function AttributeBreakdownPanel({ ads }: { ads: AdRowFlat[] }) {
-  const [dim, setDim] = useState<AttributeDimension>("format");
-  const rows = useMemo(() => computeAttributeBreakdown(ads, dim), [ads, dim]);
-
-  if (ads.length === 0) return null;
-
-  return (
-    <div className="rounded-lg border border-border bg-surface-1">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Which {DIMENSION_OPTIONS.find((d) => d.value === dim)?.label.toLowerCase()} performs best</h4>
-        <div className="flex rounded-md border border-border p-0.5 text-xs">
-          {DIMENSION_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDim(opt.value)}
-              className={`rounded px-2.5 py-1 transition-colors ${
-                dim === opt.value ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">
-                {DIMENSION_OPTIONS.find((d) => d.value === dim)?.label}
-              </th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Creatives</th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Spend</th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CTR</th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CVR</th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Ads ROAS</th>
-              <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website ROAS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.value} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
-                <td className="whitespace-nowrap px-4 py-2 font-medium text-ink-primary">
-                  {r.value === "Not tagged" ? <span className="italic text-ink-muted">Not tagged</span> : <TagPill value={r.value} />}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(r.creativeCount)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(r.spend)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.ctr)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(r.cvr)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">
-                  <RoasCell value={r.adsRoas} />
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">
-                  <RoasCell value={r.websiteRoas} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
+export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }: Props) {
   const [data, setData] = useState<MetaCreativePerformanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [level, setLevel] = useState<Level>("campaign");
-  const [onlyMatched, setOnlyMatched] = useState(false);
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState("spend");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [rankMetric, setRankMetric] = useState<RankMetric>("spend");
+  const [selectedCreative, setSelectedCreative] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -500,53 +213,48 @@ export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
     };
   }, [range.from, range.to, refreshKey]);
 
-  useEffect(() => {
-    setSortKey("spend");
-    setSortDir("desc");
-  }, [level]);
-
-  const rows = useMemo((): AnyRow[] => {
+  const flatAds = useMemo((): FlatAd[] => {
     if (!data) return [];
-    if (level === "campaign") {
-      const campaignRows: CampaignRow[] = data.campaigns.map((c) => ({ ...c, key: c.campaignId }));
-      return onlyMatched ? campaignRows.filter((c) => c.websiteRevenue != null) : campaignRows;
-    }
-    if (level === "adSet") {
-      const adSetRows: AdSetRow[] = data.campaigns.flatMap((c) =>
-        c.adSets.map((s) => ({ ...s, key: `${c.campaignId}|${s.adSetId}`, campaignId: c.campaignId, campaignName: c.campaignName }))
-      );
-      return onlyMatched ? adSetRows.filter((s) => s.websiteRevenue != null) : adSetRows;
-    }
-    if (level === "ad") {
-      const adRows: AdRowFlat[] = data.campaigns.flatMap((c) =>
-        c.adSets.flatMap((s) =>
-          s.ads.map((a) => ({
-            ...a,
-            key: a.adId,
-            campaignId: c.campaignId,
-            campaignName: c.campaignName,
-            adSetId: s.adSetId,
-            adSetName: s.adSetName,
-          }))
-        )
-      );
-      return onlyMatched ? adRows.filter((a) => a.tagged) : adRows;
-    }
-    // "product" level -- every row already has a SKU by construction, so
-    // onlyMatched is a no-op here.
-    const productRows: ProductRowFlat[] = data.products.map((g) => ({ ...g, key: g.sku }));
-    return productRows;
-  }, [data, level, onlyMatched]);
+    return data.campaigns.flatMap((c) =>
+      c.adSets.flatMap((s) => s.ads.map((a) => ({ ...a, campaignId: c.campaignId, campaignName: c.campaignName, adSetId: s.adSetId, adSetName: s.adSetName })))
+    );
+  }, [data]);
+
+  const productTitleForSku = useMemo(() => {
+    const bySku = new Map((data?.products ?? []).map((p) => [p.sku, p.productTitle]));
+    return (sku: string) => bySku.get(sku) ?? null;
+  }, [data]);
+
+  const creatives = useMemo(() => groupByCreative(flatAds, productTitleForSku), [flatAds, productTitleForSku]);
 
   const sorted = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const filtered = term ? rows.filter((r) => matchesSearch(r, level, term)) : rows;
-    const col = COLUMNS.find((c) => c.key === sortKey && c.levels.includes(level));
-    if (!col) return filtered;
-    return [...filtered].sort((a, b) => compareValues(col.sortValue(a), col.sortValue(b), sortDir));
-  }, [rows, sortKey, sortDir, level, search]);
+    const filtered = term
+      ? creatives.filter(
+          (c) =>
+            creativeName(c).toLowerCase().includes(term) ||
+            c.sku.toLowerCase().includes(term) ||
+            (c.productTitle ?? "").toLowerCase().includes(term) ||
+            c.adNames.some((n) => n.toLowerCase().includes(term))
+        )
+      : creatives;
+    return [...filtered].sort((a, b) => {
+      const av = (a as unknown as Record<string, number | string | null>)[sortKey];
+      const bv = (b as unknown as Record<string, number | string | null>)[sortKey];
+      return compareValues(av, bv, sortDir);
+    });
+  }, [creatives, search, sortKey, sortDir]);
 
-  const totals = useMemo(() => rollUpPerf(sorted), [sorted]);
+  const totals = useMemo(() => computeTotals(sorted), [sorted]);
+
+  const topCreatives = useMemo(
+    () =>
+      [...creatives]
+        .filter((c) => (rankMetric === "spend" ? c.spend > 0 : c[rankMetric] != null))
+        .sort((a, b) => (b[rankMetric] ?? -Infinity) - (a[rankMetric] ?? -Infinity))
+        .slice(0, 8),
+    [creatives, rankMetric]
+  );
 
   function toggleSort(key: string) {
     if (key === sortKey) {
@@ -557,87 +265,88 @@ export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
     }
   }
 
-  /** Product tab -> click a SKU to jump straight to that product's full
-   * creative breakdown (status, format/angle/style/gender, individual
-   * performance) on the Creative tab -- the "this product has N creatives,
-   * here's how each is doing" view the SKU is a shortcut into. */
-  function jumpToSku(sku: string) {
-    setLevel("ad");
-    setSearch(sku);
-  }
-
-  const columns = COLUMNS.filter((c) => c.levels.includes(level));
+  const taggedAdCount = flatAds.filter((a) => a.tagged).length;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-md border border-border p-0.5 text-xs">
-          {LEVEL_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setLevel(opt.value)}
-              className={`rounded px-3 py-1.5 transition-colors ${
-                level === opt.value ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-display text-base text-ink-primary">Top creatives</h3>
+            <InfoNote label="How this chart works">
+              Every ad sharing the exact same parsed tag (SKU + format + angle + style + gender + version + variant)
+              is one creative here, combined across however many ads/campaigns it's placed in. Rank by spend or
+              either ROAS; click a bar to filter the table below to that creative.
+            </InfoNote>
+          </div>
+          <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs">
+            {RANK_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setRankMetric(opt.value)}
+                className={`rounded px-2.5 py-1 transition-colors ${
+                  rankMetric === opt.value ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                }`}
+              >
+                Rank by {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          {level !== "product" && (
-            <label className="flex items-center gap-1.5 text-xs text-ink-secondary">
-              <input type="checkbox" checked={onlyMatched} onChange={(e) => setOnlyMatched(e.target.checked)} className="accent-platform-meta" />
-              Only show tagged {level === "campaign" ? "campaigns" : level === "adSet" ? "ad sets" : "creatives"}
-            </label>
-          )}
-          <input
-            type="text"
-            placeholder={SEARCH_PLACEHOLDER[level]}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
-          />
-        </div>
+        <RankedBarChart
+          items={topCreatives.map((c) => ({
+            key: c.creativeKey,
+            label: c.productTitle ?? c.sku,
+            sublabel: [c.format, c.angle, c.style].filter(Boolean).join(" · ") || c.sku,
+            value: rankMetric === "spend" ? c.spend : (c[rankMetric] ?? 0),
+            roas: c.websiteRoas,
+          }))}
+          targetRoas={targetRoas}
+          valueFormatter={(v) => (rankMetric === "spend" ? formatCurrency(v) : formatMultiplier(v))}
+          selectedKey={selectedCreative}
+          onSelect={(key) => {
+            setSelectedCreative((cur) => (cur === key ? null : key));
+            const c = creatives.find((x) => x.creativeKey === key);
+            setSearch((cur) => (selectedCreative === key ? "" : (c ? c.sku : cur)));
+          }}
+          emptyMessage="No tagged creatives yet -- this fills in once ad names start wrapping the tag in &quot;$...$&quot;"
+        />
       </div>
 
-      <p className="text-xs text-ink-muted">
-        {data ? (
-          <>
-            <span className="font-medium text-ink-primary">{data.taggedAds}</span> of {data.totalAds} ads carry a full creative tag
-            ({"$"}SKU_Format_Angle_Style_Gender_v(n)_n(n){"$"})
-            {data.matchedAds > data.taggedAds && <> — {data.matchedAds} have at least a SKU inside the tag</>}
-            {data.totalAds > 0 && data.taggedAds === 0 && " — none yet; this lights up once ad names start wrapping the tag in \"$...$\""}
-          </>
-        ) : (
-          "Loading…"
-        )}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-ink-muted">
+          {data ? (
+            <>
+              <span className="font-medium text-ink-primary">{creatives.length}</span> distinct creatives from{" "}
+              <span className="font-medium text-ink-primary">{taggedAdCount}</span> tagged ads (of {data.totalAds} total)
+            </>
+          ) : (
+            "Loading…"
+          )}
+        </p>
+        <input
+          type="text"
+          placeholder="Search creative, SKU, product, or ad name…"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setSelectedCreative(null);
+          }}
+          className="w-64 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
+        />
+      </div>
 
-      {level === "product" ? (
-        <div className="rounded-md border border-status-good/30 bg-status-good/10 px-3 py-2 text-xs text-ink-secondary">
-          <span className="font-medium text-status-good">This is the true number: </span>
-          Every creative tagged with a SKU (across every campaign and ad set) is combined into one row here, so Spend is that
-          product's real total spend and Website ROAS = that product's Shopify revenue ÷ its real total spend. Click a SKU to see
-          every individual creative behind that number — performance and status — on the Creative tab.
-        </div>
-      ) : (
-        <div className="rounded-md border border-status-warning/30 bg-status-warning/10 px-3 py-2 text-xs text-ink-secondary">
-          <span className="font-medium text-status-warning">Directional, not exact: </span>
-          Website Revenue is that SKU's <em>entire</em> Shopify revenue for the period, not revenue this specific
-          ad/ad set/campaign caused — if multiple creatives share the same SKU, each shows that SKU's full total against only its
-          own spend, not split. For one honest ROAS per product, use the{" "}
-          <button type="button" onClick={() => setLevel("product")} className="underline hover:text-ink-primary">
-            Product (true ROAS)
-          </button>{" "}
-          tab instead.
-        </div>
-      )}
+      <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+        <InfoNote tone="warning" label="Why Website Revenue is directional">
+          Website Revenue is that SKU's entire Shopify revenue for the period, not revenue this specific creative
+          caused -- if multiple creatives share the same SKU, each shows that SKU's full total against only its own
+          spend, not split.
+        </InfoNote>
+        Website figures here are directional. For one honest ROAS per product, see the SKU Attribution page.
+      </div>
 
-      {level === "ad" && <AttributeBreakdownPanel ads={sorted as AdRowFlat[]} />}
-
-      <div className={`rounded-lg border border-border bg-surface-1 ${loading ? "opacity-60" : ""}`}>
+      <div className={`rounded-2xl border border-border bg-surface-1 ${loading ? "opacity-60" : ""}`}>
         {sorted.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">{data ? "Nothing matches the current filters." : "Loading…"}</div>
         ) : (
@@ -645,7 +354,30 @@ export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {columns.map((col) => (
+                  {[
+                    { key: "creativeName", label: "Creative", align: "left" },
+                    { key: "productTitle", label: "Product", align: "left" },
+                    { key: "statusSummary", label: "Status", align: "left" },
+                    { key: "format", label: "Format", align: "left" },
+                    { key: "angle", label: "Angle", align: "left" },
+                    { key: "style", label: "Style", align: "left" },
+                    { key: "gender", label: "Gender", align: "left" },
+                    { key: "adCount", label: "Ads", align: "right" },
+                    { key: "adSetCount", label: "Ad Sets", align: "right" },
+                    { key: "campaignCount", label: "Campaigns", align: "right" },
+                    { key: "spend", label: "Spend", align: "right" },
+                    { key: "impressions", label: "Impr.", align: "right" },
+                    { key: "clicks", label: "Clicks", align: "right" },
+                    { key: "ctr", label: "CTR", align: "right" },
+                    { key: "cvr", label: "CVR", align: "right" },
+                    { key: "cpc", label: "CPC", align: "right" },
+                    { key: "cpa", label: "CPA", align: "right" },
+                    { key: "conversions", label: "Orders", align: "right" },
+                    { key: "adsRevenue", label: "Ads Revenue", align: "right" },
+                    { key: "adsRoas", label: "Ads ROAS", align: "right" },
+                    { key: "websiteRevenue", label: "Website Revenue", align: "right" },
+                    { key: "websiteRoas", label: "Website ROAS", align: "right" },
+                  ].map((col) => (
                     <th
                       key={col.key}
                       onClick={() => toggleSort(col.key)}
@@ -661,40 +393,63 @@ export function MetaCreativePerformanceSection({ range, refreshKey }: Props) {
               </thead>
               <tbody>
                 <tr className="border-b-2 border-border bg-surface-2/40 font-semibold">
-                  {columns.map((col, i) => (
-                    <td
-                      key={col.key}
-                      className={`whitespace-nowrap px-4 py-2 tabular-nums ${
-                        col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
-                      }`}
-                    >
-                      {i === 0 ? `Total (${sorted.length})` : renderTotalCell(col.key, totals)}
-                    </td>
-                  ))}
+                  <td className="whitespace-nowrap px-4 py-2 text-ink-primary">Total ({sorted.length})</td>
+                  <td className="px-4 py-2" colSpan={9} />
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(totals.spend)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(totals.impressions)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(totals.clicks)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(totals.ctr)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(totals.cvr)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(totals.cpc)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(totals.cpa)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(totals.conversions)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(totals.adsRevenue)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">
+                    <RoasCell value={totals.adsRoas} />
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-muted">N/A</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-muted">N/A</td>
                 </tr>
-                {sorted.map((row) => (
-                  <tr key={row.key} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
-                    {columns.map((col) => (
-                      <td
-                        key={col.key}
-                        className={`whitespace-nowrap px-4 py-2 tabular-nums ${
-                          col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
-                        } ${["campaignName", "adSetName", "adName", "productTitle"].includes(col.key) ? "max-w-[220px] truncate font-medium" : ""}`}
-                      >
-                        {col.key === "sku" && level === "product" && (row as ProductRowFlat).sku ? (
-                          <button
-                            type="button"
-                            onClick={() => jumpToSku((row as ProductRowFlat).sku)}
-                            className="hover:underline"
-                            title="See every creative for this product"
-                          >
-                            {col.render(row)}
-                          </button>
-                        ) : (
-                          col.render(row)
-                        )}
-                      </td>
-                    ))}
+                {sorted.map((c) => (
+                  <tr key={c.creativeKey} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
+                    <td className="max-w-[220px] truncate whitespace-nowrap px-4 py-2 font-mono text-[12px] font-medium text-ink-primary" title={creativeName(c)}>
+                      {creativeName(c)}
+                    </td>
+                    <td className="max-w-[180px] truncate whitespace-nowrap px-4 py-2 text-ink-secondary" title={c.productTitle ?? c.sku}>
+                      {c.productTitle ?? <SkuBadge sku={c.sku} />}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-ink-secondary">{c.statusSummary}</td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <TagPill value={c.format} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <TagPill value={c.angle} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <TagPill value={c.style} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <TagPill value={c.gender} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.adCount)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.adSetCount)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.campaignCount)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(c.spend)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.impressions)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.clicks)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(c.ctr)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(c.cvr)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(c.cpc)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(c.cpa)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatNumber(c.conversions)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(c.adsRevenue)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">
+                      <RoasCell value={c.adsRoas} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">{formatCurrency(c.websiteRevenue)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-ink-secondary">
+                      <RoasCell value={c.websiteRoas} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

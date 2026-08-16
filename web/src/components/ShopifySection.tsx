@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import type { ShopifyOrderSummary, ShopifyProductRow, SyncLogEntry } from "@fig/shared";
+import { useEffect, useMemo, useState } from "react";
+import type { ShopifyOrderSummary, ShopifyProductRow, SyncLogEntry, MetricsSummaryResponse } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
-import { fetchShopifySummary, fetchShopifyProducts, triggerShopifySync } from "../lib/api";
-import { formatCurrency, formatNumber, formatPercent } from "../lib/format";
+import { fetchShopifySummary, fetchShopifyProducts, triggerShopifySync, fetchSummary } from "../lib/api";
+import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { formatRelativeTime } from "../lib/relativeTime";
 import { KpiTile } from "./KpiTile";
 import { ShopifyProductTable } from "./ShopifyProductTable";
+import { InfoNote } from "./InfoNote";
+import { ParetoChart } from "./ParetoChart";
 
 const SHOPIFY_COLOR = "#95BF47";
 
@@ -15,11 +17,17 @@ interface Props {
   lastSync: SyncLogEntry | null;
   onSyncComplete: () => void;
   refreshKey: number;
+  targetRoas: number;
 }
 
-export function ShopifySection({ range, connected, lastSync, onSyncComplete, refreshKey }: Props) {
+function safeDivide(n: number, d: number): number | null {
+  return d > 0 ? n / d : null;
+}
+
+export function ShopifySection({ range, connected, lastSync, onSyncComplete, refreshKey, targetRoas }: Props) {
   const [summary, setSummary] = useState<ShopifyOrderSummary | null>(null);
   const [products, setProducts] = useState<ShopifyProductRow[]>([]);
+  const [adSpend, setAdSpend] = useState<MetricsSummaryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +38,21 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
     setLoading(true);
     setError(null);
 
-    Promise.all([fetchShopifySummary(range.from, range.to), fetchShopifyProducts(range.from, range.to)])
-      .then(([summaryRes, productsRes]) => {
+    Promise.all([
+      fetchShopifySummary(range.from, range.to),
+      fetchShopifyProducts(range.from, range.to),
+      // Combined Google + Meta spend for the same range -- the denominator
+      // for this page's own ROAS/ACOS, blended on purpose (this is the
+      // one place "how much did all ad spend return on the store" is the
+      // actual question, unlike everywhere else in the app where blending
+      // platforms would hide which one is driving the number).
+      fetchSummary(range.from, range.to, ["google", "meta"]),
+    ])
+      .then(([summaryRes, productsRes, adSpendRes]) => {
         if (cancelled) return;
         setSummary(summaryRes.summary);
         setProducts(productsRes.products);
+        setAdSpend(adSpendRes);
       })
       .catch((err) => !cancelled && setError(String(err.message ?? err)))
       .finally(() => !cancelled && setLoading(false));
@@ -43,6 +61,12 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
       cancelled = true;
     };
   }, [range.from, range.to, connected, refreshKey]);
+
+  const blendedSpend = adSpend?.blended.spend ?? null;
+  const blendedRoas = summary && blendedSpend != null ? safeDivide(summary.revenue, blendedSpend) : null;
+  const blendedAcos = summary && blendedSpend != null && summary.revenue > 0 ? safeDivide(blendedSpend, summary.revenue) : null;
+
+  const paretoItems = useMemo(() => products.filter((p) => p.revenue > 0).map((p) => ({ key: p.productId, label: p.title ?? p.productId, value: p.revenue })), [products]);
 
   async function handleSync() {
     setSyncing(true);
@@ -72,7 +96,7 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
           {lastSync ? (
             <>
               Last synced {formatRelativeTime(lastSync.runAt)}
-              {lastSync.status !== "success" && <span className="text-status-critical"> — {lastSync.status}</span>}
+              {lastSync.status !== "success" && <span className="text-status-critical"> -- {lastSync.status}</span>}
             </>
           ) : (
             "Never synced"
@@ -92,8 +116,14 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         <div className="rounded-md border border-status-critical/30 bg-status-critical/10 px-3 py-2 text-xs text-status-critical">{error}</div>
       )}
 
-      <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-ink-muted">
-        Ground-truth order data from Shopify — cross-check against each ad platform's own attributed revenue above; never sum the two, they measure different things.
+      <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+        <InfoNote label="About this data">
+          Ground-truth order data from Shopify -- cross-check against each ad platform's own attributed revenue on
+          its own page, never sum the two, they measure different things. ROAS/ACOS below are the one deliberate
+          exception: Google + Meta spend blended against this page's real website revenue, since "what did all ad
+          spend return on the store" is genuinely the question here.
+        </InfoNote>
+        Ground-truth order data from Shopify
       </div>
 
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 ${loading ? "opacity-60" : ""}`}>
@@ -101,16 +131,32 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         <KpiTile label="Revenue" value={formatCurrency(summary?.revenue)} numeric={summary?.revenue} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={1} />
         <KpiTile label="AOV" value={formatCurrency(summary?.aov)} numeric={summary?.aov} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={2} />
         <KpiTile label="Discounts" value={formatCurrency(summary?.discounts)} numeric={summary?.discounts} numericFormat="currency" accent={SHOPIFY_COLOR} staggerIndex={3} />
-        <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} numeric={summary?.sessions} numericFormat="number" accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" staggerIndex={4} />
-        <KpiTile label="CVR" value={formatPercent(summary?.cvr)} numeric={summary?.cvr} numericFormat="percent" accent={SHOPIFY_COLOR} sublabel="units sold / sessions" staggerIndex={5} />
-        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={6} />
-        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={7} />
+        <KpiTile
+          label="ROAS"
+          value={formatMultiplier(blendedRoas)}
+          accent={SHOPIFY_COLOR}
+          sublabel={`Google + Meta spend, target ${formatMultiplier(targetRoas)}`}
+          staggerIndex={4}
+        />
+        <KpiTile label="ACOS" value={formatPercent(blendedAcos)} accent={SHOPIFY_COLOR} sublabel="Google + Meta spend" staggerIndex={5} />
+        <KpiTile label="Sessions" value={formatNumber(summary?.sessions)} numeric={summary?.sessions} numericFormat="number" accent={SHOPIFY_COLOR} sublabel="site-wide, all pages" staggerIndex={6} />
+        <KpiTile label="CVR" value={formatPercent(summary?.cvr)} numeric={summary?.cvr} numericFormat="percent" accent={SHOPIFY_COLOR} sublabel="units sold / sessions" staggerIndex={7} />
+        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={8} />
+        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={9} />
       </div>
 
-      <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-xs text-ink-muted">
-        Google/Meta session splits are classified from each session's utm_source tag (Shopify Analytics) — directional, not a platform-verified
-        attribution. Real-world utm_source values are messy (placements, influencer tools, etc.); unrecognized values fall into neither bucket rather
-        than being guessed.
+      <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+        <InfoNote label="How Google/Meta Sessions are classified">
+          Classified from each session's utm_source tag (Shopify Analytics) -- directional, not a platform-verified
+          attribution. Real-world utm_source values are messy (placements, influencer tools, etc.); unrecognized
+          values fall into neither bucket rather than being guessed.
+        </InfoNote>
+        How the session splits above are classified
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <h3 className="mb-1 text-sm font-semibold text-ink-primary">Revenue concentration (Pareto)</h3>
+        <ParetoChart items={paretoItems} color={SHOPIFY_COLOR} unitLabel="products" valueFormatter={(v) => formatCurrency(v, true)} />
       </div>
 
       <ShopifyProductTable products={products} />

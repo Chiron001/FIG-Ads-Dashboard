@@ -22,9 +22,10 @@ const numberCompact = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 1,
 });
 
-/** "—" for null/undefined/NaN rather than a misleading 0 or "NaN" — matches
- * computeDerivedMetrics' null-on-zero-denominator contract. */
-const EMPTY = "—";
+/** "N/A" for null/undefined/NaN rather than a misleading 0 or "NaN" -- matches
+ * computeDerivedMetrics' null-on-zero-denominator contract. Deliberately not
+ * an em dash: reads as a written report, not a generated table. */
+const EMPTY = "N/A";
 
 export function formatCurrency(value: number | null | undefined, compact = false): string {
   if (value == null || Number.isNaN(value)) return EMPTY;

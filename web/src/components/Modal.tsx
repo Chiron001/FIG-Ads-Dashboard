@@ -20,7 +20,7 @@ export function Modal({ title, onClose, children, wide }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-10" onClick={onClose}>
       <div
-        className={`w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-lg border border-border bg-surface-1 shadow-2xl shadow-black/50`}
+        className={`w-full ${wide ? "max-w-4xl" : "max-w-lg"} rounded-2xl border border-border bg-surface-1 shadow-2xl shadow-black/50`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
