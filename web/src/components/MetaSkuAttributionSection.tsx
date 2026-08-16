@@ -102,6 +102,30 @@ const COLUMNS: Column[] = [
     render: (r) => <SkuBadge sku={"sku" in r ? (r as AdRowFlat | SkuGroupRowFlat).sku : null} />,
   },
   {
+    key: "productTitle",
+    label: "Product Name",
+    align: "left",
+    levels: ["sku"],
+    sortValue: (r) => ("productTitle" in r ? (r.productTitle ?? (r as SkuGroupRowFlat).sku) : null),
+    render: (r) => {
+      if (!("productTitle" in r)) return "—";
+      const g = r as SkuGroupRowFlat;
+      if (!g.productTitle) return <span className="text-ink-muted">—</span>;
+      // Flex row (not the cell's own `truncate`) so "+N more" always stays
+      // visible -- only the title itself shrinks/truncates, matching how
+      // many variants this SKU tag actually folded together is a fact
+      // worth never hiding, unlike the exact wording of a long title.
+      return (
+        <span className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate" title={g.productTitle}>
+            {g.productTitle}
+          </span>
+          {g.variantCount > 1 && <span className="shrink-0 text-xs text-ink-muted">+{g.variantCount - 1} more</span>}
+        </span>
+      );
+    },
+  },
+  {
     key: "adCount",
     label: "Ads",
     align: "right",
@@ -366,7 +390,7 @@ export function MetaSkuAttributionSection({ range, refreshKey }: Props) {
                         key={col.key}
                         className={`whitespace-nowrap px-4 py-2 tabular-nums ${
                           col.align === "right" ? "text-right text-ink-secondary" : "text-left text-ink-primary"
-                        } ${["campaignName", "adSetName", "adName"].includes(col.key) ? "max-w-[220px] truncate font-medium" : ""}`}
+                        } ${["campaignName", "adSetName", "adName", "productTitle"].includes(col.key) ? "max-w-[220px] truncate font-medium" : ""}`}
                       >
                         {col.render(row)}
                       </td>

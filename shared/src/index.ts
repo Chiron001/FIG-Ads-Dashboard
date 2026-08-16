@@ -383,6 +383,17 @@ export interface MetaSkuCampaignGroup extends MetaSkuPerformance {
  * N different (wrong) values. */
 export interface MetaSkuGroupRow extends MetaSkuPerformance {
   sku: string;
+  /** The SKU tag can prefix-match several distinct Shopify SKU variants
+   * (see server/src/routes/metaSkuAttribution.ts's extractSkuToken
+   * comment) -- this is the highest-revenue matching variant's product
+   * title, i.e. the one actually driving websiteRevenue, not necessarily
+   * the only product folded into this row. Null if no Shopify SKU matched
+   * (websiteRevenue is null in that case too). */
+  productTitle: string | null;
+  /** How many distinct product titles matched this SKU tag -- 1 means
+   * productTitle is the whole story; >1 means it's the dominant one among
+   * several (the UI shows "+N more"). */
+  variantCount: number;
   adCount: number;
   campaignCount: number;
 }

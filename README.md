@@ -354,6 +354,19 @@ Build proceeds phase by phase per the project spec, committing after each.
         `>100x` warning styling as the other tabs) — that's the real
         Meta-spend-vs-all-channel-revenue ratio for a SKU with only a few
         rupees of tagged spend so far, not a bug.
+      - **Product Name column** (3rd follow-up) on the SKU tab, fetched
+        from Shopify. A SKU tag can prefix-match several distinct variant
+        SKUs (see above) with different titles, so there's no single "the"
+        product in general — shows the highest-revenue matching variant's
+        title (the one actually driving the number in the row) with a
+        "+N more" badge when more variants matched. The badge is laid out
+        as its own flex item (`shrink-0`, sibling to a separately-truncating
+        title span with `min-w-0`), not inside the title's own
+        `truncate` — otherwise a long title silently swallows the "+N
+        more" note as part of what gets ellipsized, which defeats the
+        point of showing it. Verified live: `FIG-01-029` shows "Orilamp -
+        Mini Lamp (Limited Edition) +4 more" (5 real variant SKUs share
+        that family prefix).
 
 ## Structure
 

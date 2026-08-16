@@ -102,12 +102,13 @@ metaSkuAttributionRouter.get(
          group by ad_id, ad_group_id`,
         [range.from, range.to]
       ),
-      // All Shopify SKU revenue for the range in one cheap query -- prefix
-      // matching against ad-name tokens happens in Node below rather than
-      // per-token SQL round-trips (there are only ever a few hundred
-      // distinct SKUs, far cheaper than N queries).
+      // All Shopify SKU revenue (+ title, one product per exact SKU) for
+      // the range in one cheap query -- prefix matching against ad-name
+      // tokens happens in Node below rather than per-token SQL round-trips
+      // (there are only ever a few hundred distinct SKUs, far cheaper than
+      // N queries).
       pool.query(
-        `select sku, coalesce(sum(line_total), 0)::float8 as revenue
+        `select sku, max(title) as title, coalesce(sum(line_total), 0)::float8 as revenue
          from fact_shopify_line_items
          where date between $1 and $2 and sku is not null
          group by sku`,
@@ -122,6 +123,25 @@ metaSkuAttributionRouter.get(
       const matches = skuRows.filter((r) => (r.sku as string).toUpperCase().startsWith(token));
       const value = matches.length > 0 ? matches.reduce((sum, r) => sum + (r.revenue as number), 0) : null;
       tokenRevenueCache.set(token, value);
+      return value;
+    }
+
+    // A token can prefix-match several distinct Shopify SKUs (variants --
+    // see extractSkuToken's comment), each with its own title, so there's
+    // no single "the" product name in general. Uses the highest-revenue
+    // matching variant's title as the representative name (it's the one
+    // actually driving the number shown), and counts how many distinct
+    // titles matched so the UI can flag "+N more" rather than implying a
+    // single exact product when several were folded together.
+    const tokenProductCache = new Map<string, { title: string | null; variantCount: number }>();
+    function productForToken(token: string): { title: string | null; variantCount: number } {
+      const cached = tokenProductCache.get(token);
+      if (cached) return cached;
+      const matches = skuRows.filter((r) => (r.sku as string).toUpperCase().startsWith(token));
+      const distinctTitles = new Set(matches.map((r) => r.title).filter(Boolean));
+      const dominant = [...matches].sort((a, b) => (b.revenue as number) - (a.revenue as number))[0];
+      const value = { title: (dominant?.title as string | undefined) ?? null, variantCount: distinctTitles.size };
+      tokenProductCache.set(token, value);
       return value;
     }
 
@@ -188,12 +208,17 @@ metaSkuAttributionRouter.get(
       adsBySku.get(ad.sku)!.push(ad);
     }
     const skuGroups: MetaSkuGroupRow[] = [...adsBySku.entries()]
-      .map(([sku, adsForSku]): MetaSkuGroupRow => ({
-        sku,
-        adCount: adsForSku.length,
-        campaignCount: new Set(adsForSku.map((a) => a.campaignId)).size,
-        ...rollUp(adsForSku),
-      }))
+      .map(([sku, adsForSku]): MetaSkuGroupRow => {
+        const product = productForToken(sku);
+        return {
+          sku,
+          productTitle: product.title,
+          variantCount: product.variantCount,
+          adCount: adsForSku.length,
+          campaignCount: new Set(adsForSku.map((a) => a.campaignId)).size,
+          ...rollUp(adsForSku),
+        };
+      })
       .sort((a, b) => b.spend - a.spend);
 
     const campaigns: MetaSkuCampaignGroup[] = [...adsByCampaignThenAdSet.entries()]
