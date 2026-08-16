@@ -8,6 +8,7 @@ import { shopifyRouter } from "./routes/shopify";
 import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
+import { metaCreativePerformanceRouter } from "./routes/metaCreativePerformance";
 import type { AppConfig, HealthStatus } from "@fig/shared";
 
 const app = express();
@@ -28,6 +29,10 @@ app.use("/shopify", shopifyRouter);
 // routes/metaSkuAttribution.ts. Its own top-level path (not nested under
 // /shopify or /metrics) since it genuinely reads from both.
 app.use("/meta-sku-attribution", metaSkuAttributionRouter);
+// Second Meta-only lens on the same ad-name-tagging idea, this time parsing
+// the full creative naming convention ("$...$" wrapper) -- see
+// routes/metaCreativePerformance.ts and util/creativeTag.ts.
+app.use("/meta-creative-performance", metaCreativePerformanceRouter);
 app.use("/stats", statsRouter);
 
 function nowIST(): string {

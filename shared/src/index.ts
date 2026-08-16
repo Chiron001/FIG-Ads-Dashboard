@@ -422,6 +422,100 @@ export interface MetaSkuAttributionResponse {
   totalAds: number;
 }
 
+// --- Meta Creative Performance (per-creative naming-convention breakdown) --
+//
+// Meta-only, a second lens on the same ad-name-tagging idea as SKU
+// Attribution above, but for the CREATIVE itself rather than just the SKU:
+// the ad's name carries a full structured tag wrapped in "$...$" --
+// $[SKU]_[IMG/VID/CRSL/GIF/UGC]_[Aesth/Price/Gift/Occ/Qlty/Featr/Lif/Exp]_
+//  [POV/Demo/BeforeAfter/Testi/Unbox]_[M/F/NA]_v(n)_n(n)$
+// -- parsed server-side (server/src/util/creativeTag.ts) into format/angle/
+// style/gender/version/variant, on top of the same SKU token this shares
+// with SKU Attribution. Every field but SKU+format is optional in practice
+// (real tagging is inconsistent about which ones get filled in -- same
+// rollout-in-progress reality as the SKU tags), so all of them are nullable
+// here; a null field reads as "not tagged", never a guessed default.
+export type CreativeFormat = "IMG" | "VID" | "CRSL" | "GIF" | "UGC";
+export type CreativeAngle = "Aesth" | "Price" | "Gift" | "Occ" | "Qlty" | "Featr" | "Lif" | "Exp";
+export type CreativeStyle = "POV" | "Demo" | "BeforeAfter" | "Testi" | "Unbox";
+export type CreativeGender = "M" | "F" | "NA";
+
+/** Same shape/semantics as MetaSkuPerformance -- weighted rollup (sum/sum,
+ * never averaged), websiteRevenue/websiteRoas null (not 0) when nothing
+ * in the group matched a SKU. */
+interface MetaCreativePerformance {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  cpa: number | null;
+  adsRevenue: number;
+  adsRoas: number | null;
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface MetaCreativeAdRow extends MetaCreativePerformance {
+  adId: string;
+  adName: string | null;
+  adType: string | null;
+  adStatus: string | null;
+  sku: string | null;
+  format: CreativeFormat | null;
+  angle: CreativeAngle | null;
+  style: CreativeStyle | null;
+  gender: CreativeGender | null;
+  version: number | null;
+  variant: number | null;
+  /** True once sku+format are both parsed -- see isTaggedCreative in
+   * server/src/util/creativeTag.ts. The other fields can still be null on a
+   * "tagged" row (they're optional in the naming convention). */
+  tagged: boolean;
+}
+
+export interface MetaCreativeAdSetGroup extends MetaCreativePerformance {
+  adSetId: string;
+  adSetName: string | null;
+  ads: MetaCreativeAdRow[];
+}
+
+export interface MetaCreativeCampaignGroup extends MetaCreativePerformance {
+  campaignId: string;
+  campaignName: string | null;
+  adSets: MetaCreativeAdSetGroup[];
+}
+
+/** One row per distinct SKU (product), combining every tagged creative for
+ * it regardless of campaign/ad set -- the "true" website ROAS for that
+ * product, same fix as MetaSkuGroupRow. `creatives` is the full per-ad
+ * breakdown for that product (format/angle/style/gender/version, spend,
+ * status, ...) -- this is what answers "this product has N creatives, here's
+ * how each is performing and its status", sorted by spend desc. */
+export interface MetaCreativeProductGroup extends MetaCreativePerformance {
+  sku: string;
+  productTitle: string | null;
+  variantCount: number;
+  creativeCount: number;
+  campaignCount: number;
+  creatives: MetaCreativeAdRow[];
+}
+
+export interface MetaCreativePerformanceResponse {
+  from: string;
+  to: string;
+  campaigns: MetaCreativeCampaignGroup[];
+  /** Sorted by spend desc -- one row per distinct SKU, see MetaCreativeProductGroup. */
+  products: MetaCreativeProductGroup[];
+  /** Ads with a SKU parsed out of a "$...$" tag (may still be missing format/etc). */
+  matchedAds: number;
+  /** Ads with a full enough tag to count as a real creative (sku + format -- see isTaggedCreative). */
+  taggedAds: number;
+  totalAds: number;
+}
+
 // --- statistics layer: route response shapes (spec §3b/§2/§4/§6) -----------
 
 export interface CompareCampaignsResponse {

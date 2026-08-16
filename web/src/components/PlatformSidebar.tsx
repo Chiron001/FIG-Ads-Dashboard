@@ -7,9 +7,9 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
 
 /** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify
  * (not an ad platform -- no spend/campaigns, not in the shared Platform
- * union), plus Meta's SKU Attribution sub-view (nested under Meta Ads in
- * the nav, not a platform of its own). */
-export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution";
+ * union), plus Meta's SKU Attribution and Creative Performance sub-views
+ * (nested under Meta Ads in the nav, not platforms of their own). */
+export type SidebarSelection = Platform | "shopify" | "meta-sku-attribution" | "meta-creative-performance";
 
 const SHOPIFY_COLOR = "#95BF47";
 
@@ -87,6 +87,26 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected 
                     <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.meta }} />
                   )}
                   <span className="truncate">↳ SKU Attribution</span>
+                </button>
+              )}
+
+              {/* Second Meta-only sub-view: same ad-name-tagging idea, but
+                  for the full creative naming convention ("$...$" wrapper)
+                  rather than just the SKU. */}
+              {platform === "meta" && !collapsed && (
+                <button
+                  type="button"
+                  onClick={() => onChange("meta-creative-performance")}
+                  className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                    active === "meta-creative-performance"
+                      ? "bg-surface-2 text-ink-primary"
+                      : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  }`}
+                >
+                  {active === "meta-creative-performance" && (
+                    <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.meta }} />
+                  )}
+                  <span className="truncate">↳ Creative Performance</span>
                 </button>
               )}
             </div>

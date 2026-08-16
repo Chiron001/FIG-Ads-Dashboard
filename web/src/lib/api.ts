@@ -19,6 +19,7 @@ import type {
   MetricsProductsParetoResponse,
   MetricsAdsResponse,
   MetaSkuAttributionResponse,
+  MetaCreativePerformanceResponse,
 } from "@fig/shared";
 
 // Local dev: Vite's dev-only proxy rewrites /api -> http://localhost:4000
@@ -156,4 +157,10 @@ export function fetchAds(platform: GrainPlatform, from: string, to: string, camp
 
 export function fetchMetaSkuAttribution(from: string, to: string): Promise<MetaSkuAttributionResponse> {
   return getJSON(`/meta-sku-attribution?from=${from}&to=${to}`);
+}
+
+// --- Meta Creative Performance (per-creative $...$ tag breakdown) ----------
+
+export function fetchMetaCreativePerformance(from: string, to: string): Promise<MetaCreativePerformanceResponse> {
+  return getJSON(`/meta-creative-performance?from=${from}&to=${to}`);
 }

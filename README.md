@@ -435,6 +435,66 @@ Build proceeds phase by phase per the project spec, committing after each.
         10,322 Google / 73,426 Meta; per-product rows sane and additive
         (e.g. Wavy Floor Lamp - Crimson Red: 8,488 total → 294 Google /
         7,087 Meta), confirmed via Playwright with zero console errors.
+- [x] **Meta Creative Performance.** A third Meta-only sub-view, sibling to
+      SKU Attribution rather than merged into it (same nested-under-Meta-Ads
+      sidebar pattern, own "↳ Creative Performance" nav item). Parses the
+      user's full creative naming convention out of each ad's name --
+      `$[SKU]_[IMG/VID/CRSL/GIF/UGC]_[Aesth/Price/Gift/Occ/Qlty/Featr/Lif/
+      Exp]_[POV/Demo/BeforeAfter/Testi/Unbox]_[M/F/NA]_v(n)_n(n)$` -- into
+      structured format/angle/style/gender/version/variant fields, on top of
+      the same SKU token SKU Attribution already extracts.
+      - `server/src/util/creativeTag.ts`'s `parseCreativeTag()` is
+        deliberately tolerant of gaps: real tagging (like the SKU rollout
+        before it) is expected to skip optional fields inconsistently, so
+        each underscore-delimited token inside the `$...$` wrapper is tried
+        against whichever categories haven't been filled yet, in spec order
+        -- a token that fits nothing remaining is skipped, not treated as a
+        parse failure. Validated against all ~10 real live Meta ad names
+        that already follow the bare nomenclature (pre-`$...$`) as they'd
+        parse once wrapped -- e.g. `FIG-01-035-BG_GIF_Featr_v1` (style/
+        gender omitted, jumps straight from angle to version) and
+        `FIG-01-048-OR_GIF_Qlty_Demo_NA_v1` (every field present, including
+        `NA` gender) both resolve correctly. 20 unit tests in
+        `creativeTag.test.ts`.
+      - **Per the user (2026-08-16): none of this account's ~240 live Meta
+        ad names carry the required `$...$` wrapper yet** -- confirmed live,
+        zero rows match. That's an upcoming rename on the user's end, not a
+        bug here; the route/UI both handle the resulting all-zero state
+        gracefully (`taggedAds: 0`, empty Product tab with its normal empty
+        state, no crash) and the coverage line says so explicitly ("none
+        yet; this lights up once ad names start wrapping the tag").
+        End-to-end verified live by temporarily wrapping 4 real ad names in
+        `$...$` directly in Postgres, confirming the parsed fields/rollups/
+        Product grouping came through correctly via curl and Playwright,
+        then restoring the originals (confirmed 0 `$`-containing names
+        remain).
+      - **Four tabs**, same Campaign/Ad Set/Ad/Product-rollup shape as SKU
+        Attribution: Campaign and Ad Set roll up spend/CTR/CVR/ROAS only
+        (creative attributes don't aggregate meaningfully at those levels);
+        **Creative (Ad)** is the flat, sortable, per-creative table with the
+        new Format/Angle/Style/Gender/Version/Variant columns alongside
+        Status and the full standard metric set -- this is the "which
+        creative performed best" view, sortable by any column; **Product
+        (true ROAS)** combines every creative sharing a SKU into one row
+        (same true-ROAS fix as SKU Attribution's SKU tab), with a
+        `Creatives` count column and each SKU clickable straight through to
+        the Creative tab pre-filtered to it -- the "this product has N
+        creatives, here's how each is performing and its status" view the
+        user asked for.
+      - **"Which [format/angle/style/gender] performs best" panel**, shown
+        only on the Creative tab, above the table -- groups the currently
+        visible (searched/filtered) creatives by whichever dimension is
+        selected and shows weighted spend/CTR/CVR/Ads ROAS/Website ROAS per
+        value, sorted by spend desc, computed client-side (no extra
+        round-trip). Untagged creatives group under "Not tagged" rather
+        than being dropped. This is the genuinely new "deep analysis" layer
+        the flat per-ad table alone doesn't give -- comparing creative
+        *types*, not just individual ads.
+      - Same conventions as every prior section: weighted rollups (sum/sum,
+        never averaged), null (not 0) for unmatched/untagged, "contains"
+        search scoped per level, a pinned Total row reflecting the current
+        filter, and the amber "directional" / green "true number" caveat
+        banners with cross-links between tabs.
 
 ## Structure
 

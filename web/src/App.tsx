@@ -10,6 +10,7 @@ import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSid
 import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
+import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
 import "./App.css";
 
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
@@ -76,9 +77,11 @@ function App() {
 
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
+  const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
+  const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
   const lastSync = isShopify
     ? (shopifyStatus?.lastSync ?? null)
-    : isMetaSkuAttribution
+    : isMetaSubView
       ? // Derived entirely from Meta + Shopify's already-synced data -- no
         // sync of its own, so "last synced" reuses Meta's.
         (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
@@ -102,7 +105,13 @@ function App() {
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-0/95 px-6 py-3.5 backdrop-blur">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-ink-primary">
-              {isShopify ? "Shopify" : isMetaSkuAttribution ? "Meta Ads — SKU Attribution" : PLATFORM_LABELS[activeSelection]}
+              {isShopify
+                ? "Shopify"
+                : isMetaSkuAttribution
+                  ? "Meta Ads — SKU Attribution"
+                  : isMetaCreativePerformance
+                    ? "Meta Ads — Creative Performance"
+                    : PLATFORM_LABELS[activeSelection]}
             </h2>
             <span className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-ink-secondary">
               All figures in INR
@@ -174,6 +183,8 @@ function App() {
             />
           ) : isMetaSkuAttribution ? (
             <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} />
+          ) : isMetaCreativePerformance ? (
+            <MetaCreativePerformanceSection key="meta-creative-performance" range={range} refreshKey={refreshKey} />
           ) : (
             <PlatformSection
               key={activeSelection}
