@@ -906,6 +906,25 @@ Build proceeds phase by phase per the project spec, committing after each.
         filter (All / Complete / Missing Target/Price, each with a live
         count) sits above the table to hide products that already have
         both fields set, or show only the ones still missing something.
+- [x] **Fixed a real Google Ads undercounting bug**: the main campaign
+      query (`FROM ad_group`) structurally excludes Performance Max
+      campaigns, which have no ad groups at all (asset_groups instead) --
+      confirmed against the user's own screenshot, our synced numbers were
+      short by ~2.5-3x on days with real PMax spend. Fixed with a second
+      `FROM campaign` query that fills in exactly the (campaignId, date)
+      gaps the ad_group query missed, verified to an exact rupee/click/
+      impression match against Google's own console, and backfilled 30
+      days of history. See `server/src/connectors/google.ts`.
+- [x] **Shopify Products table**: dropped the Vendor column; added an
+      always-on "Performance" column -- a colored verdict badge per
+      product (Growing/Declining/Stable, sub-classified by driver:
+      traffic, conversion, or efficiency) comparing against the
+      immediately-adjacent previous period regardless of the top bar's
+      "Compare to" setting. Click a badge for a side-drawer with the full
+      rule-based analysis (not an AI call -- a deterministic decision tree,
+      same philosophy as the Projection Sheet's Insight column) plus every
+      underlying metric's current-vs-previous delta. See
+      `web/src/lib/productInsight.ts`.
 
 ## Structure
 
