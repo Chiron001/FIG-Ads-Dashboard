@@ -60,6 +60,40 @@ const GAQL_QUERY = (from: string, to: string) => `
   WHERE segments.date BETWEEN '${from}' AND '${to}'
 `;
 
+// Performance Max (and Local/Discovery/Smart) campaigns have NO ad_group
+// entities at all -- they're built on asset_groups instead -- so the query
+// above structurally returns zero rows for them, silently undercounting
+// total spend/revenue by however much PMax is running (confirmed live:
+// this was ~60% of a day's real spend on this account). The `campaign`
+// resource reports real metrics for every campaign type regardless of
+// whether it has ad groups, so this second query exists purely to fill
+// that gap -- normalize() below only keeps rows for (campaignId, date)
+// pairs the ad_group query above did NOT already cover, so a normal
+// Search/Display campaign's spend is never double-counted.
+const CAMPAIGN_TOTALS_QUERY = (from: string, to: string) => `
+  SELECT
+    campaign.id,
+    campaign.name,
+    segments.date,
+    metrics.cost_micros,
+    metrics.impressions,
+    metrics.clicks,
+    metrics.conversions,
+    metrics.conversions_value
+  FROM campaign
+  WHERE segments.date BETWEEN '${from}' AND '${to}'
+`;
+
+// Sentinel ad_group_id for the gap-filling rows above -- NOT null, because
+// fact_ad_performance's upsert key is (platform, campaign_id,
+// coalesce(ad_group_id, ''), date, attribution_window) and the
+// impression-share synthetic rows already use ad_group_id=null (coalesced
+// to '') for the same (campaign, date); reusing null here would collide
+// with THAT row on upsert and one would silently overwrite the other.
+// Never displayed -- fact_ad_performance is never grouped/shown at the
+// ad_group level in the UI, only summed to campaign level or higher.
+const NO_AD_GROUP_SENTINEL = "__no_ad_group__";
+
 // search_impression_share / search_budget_lost_impression_share are
 // fundamentally CAMPAIGN-level-per-day metrics (Search-eligible campaign
 // types only -- PMax/Shopping/Display report them as absent/null, which
@@ -208,8 +242,21 @@ export class GoogleAdsConnector implements AdsConnector {
       console.warn("[google connector] impression-share query failed, continuing without it:", err);
     }
 
+    // Not isolated the same way -- this one fixes a real undercount (PMax
+    // and any other ad-group-less campaign type), so a failure here should
+    // be loud, not silently swallowed the way the impression-share nicety
+    // is. Still wrapped so a transient failure degrades to "PMax missing
+    // again, same as before this fix" rather than failing the whole sync.
+    let campaignTotalsRows: RawRow[] = [];
+    try {
+      const rows = await this.customer.query(CAMPAIGN_TOTALS_QUERY(from, to));
+      campaignTotalsRows = (rows as unknown as RawRow[]).map((r) => ({ ...r, _kind: "campaign_totals" }));
+    } catch (err) {
+      console.warn("[google connector] campaign-totals query failed -- PMax/no-ad-group campaigns will be undercounted this sync:", err);
+    }
+
     const taggedAdGroupRows = (adGroupRows as unknown as RawRow[]).map((r) => ({ ...r, _kind: "ad_group" }));
-    return [...taggedAdGroupRows, ...impressionShareRows];
+    return [...taggedAdGroupRows, ...impressionShareRows, ...campaignTotalsRows];
   }
 
   async fetchCampaignRoster(): Promise<CampaignRosterEntry[]> {
@@ -225,7 +272,57 @@ export class GoogleAdsConnector implements AdsConnector {
   }
 
   normalize(rows: RawRow[]): CanonicalRowInput[] {
-    return rows.map((r) => {
+    // (campaignId|date) pairs the ad_group query actually returned a row
+    // for -- campaign_totals rows below only fill in what's missing from
+    // this set, so a normal Search/Display campaign (which DOES report via
+    // ad_group) never gets its spend counted twice.
+    const adGroupCoverage = new Set<string>();
+    for (const r of rows) {
+      if (r._kind !== "ad_group") continue;
+      const row = r as unknown as { campaign: { id: number }; segments: { date: string } };
+      adGroupCoverage.add(`${row.campaign.id}|${row.segments.date}`);
+    }
+
+    return rows.flatMap((r): CanonicalRowInput[] => {
+      if (r._kind === "campaign_totals") {
+        const row = r as unknown as {
+          campaign: { id: number; name: string };
+          segments: { date: string };
+          metrics: {
+            cost_micros?: number | string;
+            impressions?: number | string;
+            clicks?: number | string;
+            conversions?: number | string;
+            conversions_value?: number | string;
+          };
+        };
+        if (adGroupCoverage.has(`${row.campaign.id}|${row.segments.date}`)) return []; // already counted via ad_group rows
+
+        // The gap-filling row itself -- see CAMPAIGN_TOTALS_QUERY's comment.
+        // Real metrics (not zeroed like the impression-share synthetic
+        // rows), since this IS the only source of truth for a campaign
+        // type with no ad_group breakdown at all.
+        return [
+          {
+            platform: "google",
+            campaignId: String(row.campaign.id),
+            campaignName: row.campaign.name ?? null,
+            adGroupId: NO_AD_GROUP_SENTINEL,
+            adGroupName: null,
+            date: row.segments.date,
+            spend: Number(row.metrics.cost_micros ?? 0) / 1e6,
+            impressions: Number(row.metrics.impressions ?? 0),
+            clicks: Number(row.metrics.clicks ?? 0),
+            conversions: Number(row.metrics.conversions ?? 0),
+            revenue: Number(row.metrics.conversions_value ?? 0),
+            attributionWindow: ATTRIBUTION_WINDOW,
+            searchImpressionShare: null,
+            searchBudgetLostImpressionShare: null,
+            raw: row as unknown as Record<string, unknown>,
+          },
+        ];
+      }
+
       if (r._kind === "impression_share") {
         const row = r as unknown as {
           campaign: { id: number; name: string };
@@ -239,27 +336,29 @@ export class GoogleAdsConnector implements AdsConnector {
         // can never skew SUM(spend)/SUM(clicks)/etc; ad_group_id null (not
         // any real ad group) so it can't collide with a real ad_group row
         // under the unique index. See IMPRESSION_SHARE_QUERY's comment.
-        return {
-          platform: "google",
-          campaignId: String(row.campaign.id),
-          campaignName: row.campaign.name ?? null,
-          adGroupId: null,
-          adGroupName: null,
-          date: row.segments.date,
-          spend: 0,
-          impressions: 0,
-          clicks: 0,
-          conversions: 0,
-          revenue: 0,
-          attributionWindow: ATTRIBUTION_WINDOW,
-          searchImpressionShare:
-            row.metrics.search_impression_share != null ? Number(row.metrics.search_impression_share) : null,
-          searchBudgetLostImpressionShare:
-            row.metrics.search_budget_lost_impression_share != null
-              ? Number(row.metrics.search_budget_lost_impression_share)
-              : null,
-          raw: row as unknown as Record<string, unknown>,
-        };
+        return [
+          {
+            platform: "google",
+            campaignId: String(row.campaign.id),
+            campaignName: row.campaign.name ?? null,
+            adGroupId: null,
+            adGroupName: null,
+            date: row.segments.date,
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            conversions: 0,
+            revenue: 0,
+            attributionWindow: ATTRIBUTION_WINDOW,
+            searchImpressionShare:
+              row.metrics.search_impression_share != null ? Number(row.metrics.search_impression_share) : null,
+            searchBudgetLostImpressionShare:
+              row.metrics.search_budget_lost_impression_share != null
+                ? Number(row.metrics.search_budget_lost_impression_share)
+                : null,
+            raw: row as unknown as Record<string, unknown>,
+          },
+        ];
       }
 
       const row = r as unknown as {
@@ -275,23 +374,25 @@ export class GoogleAdsConnector implements AdsConnector {
         };
       };
 
-      return {
-        platform: "google",
-        campaignId: String(row.campaign.id),
-        campaignName: row.campaign.name ?? null,
-        adGroupId: String(row.ad_group.id),
-        adGroupName: row.ad_group.name ?? null,
-        date: row.segments.date,
-        spend: Number(row.metrics.cost_micros ?? 0) / 1e6,
-        impressions: Number(row.metrics.impressions ?? 0),
-        clicks: Number(row.metrics.clicks ?? 0),
-        conversions: Number(row.metrics.conversions ?? 0),
-        revenue: Number(row.metrics.conversions_value ?? 0),
-        attributionWindow: ATTRIBUTION_WINDOW,
-        searchImpressionShare: null,
-        searchBudgetLostImpressionShare: null,
-        raw: row as unknown as Record<string, unknown>,
-      };
+      return [
+        {
+          platform: "google",
+          campaignId: String(row.campaign.id),
+          campaignName: row.campaign.name ?? null,
+          adGroupId: String(row.ad_group.id),
+          adGroupName: row.ad_group.name ?? null,
+          date: row.segments.date,
+          spend: Number(row.metrics.cost_micros ?? 0) / 1e6,
+          impressions: Number(row.metrics.impressions ?? 0),
+          clicks: Number(row.metrics.clicks ?? 0),
+          conversions: Number(row.metrics.conversions ?? 0),
+          revenue: Number(row.metrics.conversions_value ?? 0),
+          attributionWindow: ATTRIBUTION_WINDOW,
+          searchImpressionShare: null,
+          searchBudgetLostImpressionShare: null,
+          raw: row as unknown as Record<string, unknown>,
+        },
+      ];
     });
   }
 
