@@ -35,6 +35,10 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
   const [comparisonSummary, setComparisonSummary] = useState<ShopifyOrderSummary | null>(null);
   const [comparisonProducts, setComparisonProducts] = useState<ShopifyProductRow[] | null>(null);
   const [comparisonAdSpend, setComparisonAdSpend] = useState<MetricsSummaryResponse | null>(null);
+  // Always the immediately-adjacent previous period, independent of
+  // whatever the top bar's "Compare to" is set to -- powers the Products
+  // table's always-on "Performance" column (see lib/productInsight.ts).
+  const [previousPeriodProducts, setPreviousPeriodProducts] = useState<ShopifyProductRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +49,13 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
     setLoading(true);
     setError(null);
     const compRange = comparisonRange(range, comparisonMode);
+    // Always the immediately-adjacent previous period -- independent of
+    // compRange above, which follows whatever the top bar's "Compare to"
+    // is set to (and is null when that's "none"). Reuses compRange's
+    // already-fetched products when the two happen to coincide (comparisonMode
+    // === "previous_period") rather than double-fetching the same data.
+    const adjacentPrevRange = comparisonRange(range, "previous_period");
+    const reuseComparisonFetch = comparisonMode === "previous_period";
 
     Promise.all([
       fetchShopifySummary(range.from, range.to),
@@ -58,8 +69,9 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
       compRange ? fetchShopifySummary(compRange.from, compRange.to) : Promise.resolve(null),
       compRange ? fetchShopifyProducts(compRange.from, compRange.to) : Promise.resolve(null),
       compRange ? fetchSummary(compRange.from, compRange.to, ["google", "meta"]) : Promise.resolve(null),
+      reuseComparisonFetch || !adjacentPrevRange ? Promise.resolve(null) : fetchShopifyProducts(adjacentPrevRange.from, adjacentPrevRange.to),
     ])
-      .then(([summaryRes, productsRes, adSpendRes, compSummaryRes, compProductsRes, compAdSpendRes]) => {
+      .then(([summaryRes, productsRes, adSpendRes, compSummaryRes, compProductsRes, compAdSpendRes, prevPeriodProductsRes]) => {
         if (cancelled) return;
         setSummary(summaryRes.summary);
         setProducts(productsRes.products);
@@ -67,6 +79,7 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         setComparisonSummary(compSummaryRes?.summary ?? null);
         setComparisonProducts(compProductsRes?.products ?? null);
         setComparisonAdSpend(compAdSpendRes);
+        setPreviousPeriodProducts((reuseComparisonFetch ? compProductsRes?.products : prevPeriodProductsRes?.products) ?? null);
       })
       .catch((err) => !cancelled && setError(String(err.message ?? err)))
       .finally(() => !cancelled && setLoading(false));
@@ -261,6 +274,7 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
         products={products}
         comparisonProducts={comparisonMode !== "none" ? comparisonProducts : undefined}
         comparisonLabel={comparisonMode !== "none" ? COMPARISON_LABELS[comparisonMode] : undefined}
+        previousPeriodProducts={previousPeriodProducts}
       />
     </div>
   );

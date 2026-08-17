@@ -2,10 +2,12 @@ import { Fragment, useMemo, useState } from "react";
 import type { ShopifyProductRow } from "@fig/shared";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { computeDelta } from "../lib/delta";
+import { computeProductInsight, INSIGHT_META } from "../lib/productInsight";
 import { InfoNote } from "./InfoNote";
+import { ProductPerformanceDrawer } from "./ProductPerformanceDrawer";
 
 interface TextColumn {
-  key: "title" | "sku" | "productType" | "vendor";
+  key: "title" | "sku" | "productType";
   label: string;
   format: (r: ShopifyProductRow) => string;
 }
@@ -14,7 +16,6 @@ const TEXT_COLUMNS: TextColumn[] = [
   { key: "title", label: "Product", format: (r) => r.title ?? r.productId },
   { key: "sku", label: "SKU", format: (r) => r.sku ?? "N/A" },
   { key: "productType", label: "Type", format: (r) => r.productType ?? "N/A" },
-  { key: "vendor", label: "Vendor", format: (r) => r.vendor ?? "N/A" },
 ];
 
 interface NumericColumn {
@@ -50,6 +51,11 @@ interface Props {
    * period / % change) instead of one. */
   comparisonProducts?: ShopifyProductRow[] | null;
   comparisonLabel?: string;
+  /** Same product rows, fetched for the immediately-adjacent previous
+   * period specifically -- always fetched, independent of the "Compare to"
+   * comparisonProducts above -- powers the "Performance" column's
+   * always-on analysis. Null while loading. */
+  previousPeriodProducts: ShopifyProductRow[] | null;
 }
 
 /** Standalone delta cell (not an inline suffix like DeltaBadge) -- "N/A"
@@ -67,10 +73,11 @@ function DeltaCell({ value }: { value: number | null }) {
   );
 }
 
-export function ShopifyProductTable({ products, comparisonProducts, comparisonLabel }: Props) {
+export function ShopifyProductTable({ products, comparisonProducts, comparisonLabel, previousPeriodProducts }: Props) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<keyof ShopifyProductRow>("revenue");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [performanceProductId, setPerformanceProductId] = useState<string | null>(null);
 
   const comparing = comparisonProducts != null;
 
@@ -78,6 +85,11 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
     if (!comparisonProducts) return null;
     return new Map(comparisonProducts.map((p) => [p.productId, p]));
   }, [comparisonProducts]);
+
+  const previousPeriodByProductId = useMemo(() => {
+    if (!previousPeriodProducts) return null;
+    return new Map(previousPeriodProducts.map((p) => [p.productId, p]));
+  }, [previousPeriodProducts]);
 
   const sorted = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -107,6 +119,8 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
     }
   }
 
+  const performanceProduct = performanceProductId ? products.find((p) => p.productId === performanceProductId) : null;
+
   return (
     <div className="rounded-2xl border border-border bg-surface-1">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -121,7 +135,9 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
             catalog ads), matched by product handle -- the two are additive, not double-counting the same spend. ROAS
             = Revenue ÷ (SKU Attributed Spend + Meta Catalog Spend); POAS = Gross Profit ÷ that same combined spend,
             Gross Profit modeled at 65% of revenue (COGS assumed 35%). ATC is Shopify Analytics' sessions that added
-            this product to cart; Bounce Rate is Shopify Analytics' own per-product figure, live.
+            this product to cart; Bounce Rate is Shopify Analytics' own per-product figure, live. Performance always
+            compares to the immediately-adjacent previous period (same length, right before this one) regardless of
+            the top bar's "Compare to" setting -- click a badge for the full analytical breakdown.
           </InfoNote>
           {comparing && comparisonLabel && (
             <span className="text-xs text-ink-muted">
@@ -158,6 +174,13 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                     {sortKey === col.key && <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>}
                   </th>
                 ))}
+                <th
+                  rowSpan={comparing ? 2 : 1}
+                  className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted"
+                  title="Always compares to the immediately-adjacent previous period, regardless of the top bar's Compare to setting"
+                >
+                  Performance
+                </th>
                 {NUMERIC_COLUMNS.map((col) => (
                   <th
                     key={col.key}
@@ -185,6 +208,9 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
             <tbody>
               {sorted.map((row) => {
                 const comp = comparisonByProductId?.get(row.productId) ?? null;
+                const previousPeriodRow = previousPeriodByProductId?.get(row.productId) ?? null;
+                const insight = previousPeriodByProductId ? computeProductInsight(row, previousPeriodRow) : null;
+                const insightMeta = insight ? INSIGHT_META[insight.verdict] : null;
                 return (
                   <tr key={row.productId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
                     {TEXT_COLUMNS.map((col) => (
@@ -197,6 +223,21 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                         {col.format(row)}
                       </td>
                     ))}
+                    <td className="whitespace-nowrap px-4 py-2">
+                      {insight && insightMeta ? (
+                        <button
+                          type="button"
+                          onClick={() => setPerformanceProductId(row.productId)}
+                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-80"
+                          style={{ background: `color-mix(in oklab, ${insightMeta.color} 16%, transparent)`, color: insightMeta.color }}
+                          title="Click for the full analytical breakdown"
+                        >
+                          {insight.label}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-ink-muted">Loading…</span>
+                      )}
+                    </td>
                     {NUMERIC_COLUMNS.map((col) => {
                       const value = (row[col.key] as number | null) ?? null;
                       if (!comparing) {
@@ -224,6 +265,14 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
             </tbody>
           </table>
         </div>
+      )}
+
+      {performanceProduct && (
+        <ProductPerformanceDrawer
+          product={performanceProduct}
+          previous={previousPeriodByProductId?.get(performanceProduct.productId) ?? null}
+          onClose={() => setPerformanceProductId(null)}
+        />
       )}
     </div>
   );
