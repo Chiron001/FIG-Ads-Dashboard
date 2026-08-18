@@ -501,7 +501,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
           {campaigns.length === 0 ? "No campaigns found for this platform." : "No campaigns match the current filters."}
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-scroll-pane">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
@@ -509,7 +509,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
                   <th
                     key={col.key}
                     onClick={() => toggleSort(col.key)}
-                    className={`cursor-pointer select-none whitespace-nowrap px-4 py-2 text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary ${
+                    className={`sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary ${
                       col.align === "right" ? "text-right" : "text-left"
                     }`}
                   >

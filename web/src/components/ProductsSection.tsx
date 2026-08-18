@@ -249,7 +249,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
         </div>
       )}
 
-      <div className={`mt-3 overflow-x-auto ${loading ? "opacity-60" : ""}`}>
+      <div className={`mt-3 table-scroll-pane ${loading ? "opacity-60" : ""}`}>
         {enriched.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">
             {data && data.products.length > 0 ? "No products match the current filters." : "No product data for this range yet."}
@@ -258,30 +258,30 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">
                   {groupBy === "sku" ? "Product" : groupBy === "type_l2" ? "Sub-category" : "Category"}
                 </th>
                 {groupBy !== "sku" && (
-                  <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">SKUs</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">SKUs</th>
                 )}
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Spend</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% Spend</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Impr.</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Clicks</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CTR</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CVR</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CPA</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Orders</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">AOV</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Revenue</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% Rev</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ROAS</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ACOS</th>
-                <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Profit</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Spend</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% Spend</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Impr.</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Clicks</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CTR</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CVR</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">CPA</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Orders</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">AOV</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Revenue</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% Rev</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ROAS</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ACOS</th>
+                <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Profit</th>
                 {groupBy === "sku" && (
                   <>
-                    <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website Revenue</th>
-                    <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website ROAS</th>
+                    <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website Revenue</th>
+                    <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Website ROAS</th>
                   </>
                 )}
               </tr>

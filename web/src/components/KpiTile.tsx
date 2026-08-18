@@ -44,7 +44,7 @@ export function KpiTile({ label, value, sublabel, accent, delta, deltaLabel, num
         title={`How is ${label} computed?`}
         className="glass group animate-fade-slide-in relative w-full overflow-hidden rounded-2xl px-4 py-3.5 text-left shadow-[var(--shadow-card)] transition-[transform,border-color] duration-[var(--duration-micro)] ease-[var(--ease-signature)] hover:-translate-y-0.5 hover:border-white/15 focus-visible:-translate-y-0.5"
         style={{
-          backgroundImage: `linear-gradient(155deg, rgba(255,255,255,0.06), rgba(255,255,255,0) 45%), linear-gradient(200deg, color-mix(in oklab, ${accent ?? "var(--color-accent)"} 16%, transparent), transparent 60%)`,
+          backgroundImage: `linear-gradient(155deg, var(--card-sheen-1), var(--card-sheen-2) 45%), linear-gradient(200deg, color-mix(in oklab, ${accent ?? "var(--color-accent)"} 16%, transparent), transparent 60%)`,
           ...(accent ? { borderLeftColor: accent, borderLeftWidth: "3px" } : undefined),
           ...(staggerIndex !== undefined ? { animationDelay: `${staggerIndex * 40}ms` } : undefined),
         }}

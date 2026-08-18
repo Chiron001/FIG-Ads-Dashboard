@@ -615,36 +615,36 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
         {sortedTable.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">{data ? "Nothing matches the current filters." : "Loading…"}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll-pane">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Product</th>
-                  <th className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Quadrant</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Product</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Quadrant</th>
                   <th
                     onClick={() => toggleSort("adSpend")}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     Ad Spend {sortKey === "adSpend" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Impressions</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Impressions</th>
                   <th
                     onClick={() => toggleSort("revenue")}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     Revenue {sortKey === "revenue" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Gross Profit</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Gross Profit</th>
                   <th
                     onClick={() => toggleSort("poas")}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     POAS {sortKey === "poas" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
-                  <th className="whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ROAS</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">ROAS</th>
                   <th
                     onClick={() => toggleSort("cvr")}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     CVR {sortKey === "cvr" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>

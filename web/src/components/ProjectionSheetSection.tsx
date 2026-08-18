@@ -313,33 +313,51 @@ export function ProjectionSheetSection({ connected }: Props) {
         {filteredSorted.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">{data ? "Nothing matches the current search." : "Loading…"}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll-pane">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
                   <th
                     onClick={() => toggleSort("title")}
-                    className="sticky left-0 z-10 cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead sticky-thead-corner sticky left-0 cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     Product {sortKey === "title" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
-                  <th onClick={() => toggleSort("unitTarget")} className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary">
+                  <th
+                    onClick={() => toggleSort("unitTarget")}
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                  >
                     Unit Target {sortKey === "unitTarget" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
-                  <th onClick={() => toggleSort("price")} className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary">
+                  <th
+                    onClick={() => toggleSort("price")}
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                  >
                     Price {sortKey === "price" && (sortDir === "asc" ? "↑" : "↓")}
                   </th>
                   {DERIVED_COLUMNS.map((col) => (
                     <th
                       key={col.key}
                       onClick={() => toggleSort(col.key)}
-                      style={{ background: GROUP_BG[col.group] }}
-                      className="cursor-pointer select-none whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                      // Sticky header, unlike the (non-sticky) body cells below, needs an
+                      // opaque backing behind the group tint -- GROUP_BG is deliberately
+                      // translucent (rgba alpha ~0.05-0.07) so it blends with row hover
+                      // states, but layered alone on a *sticky* cell that translucency
+                      // let scrolled-past rows bleed through at the stuck boundary
+                      // (confirmed live: a ghost sliver of row 1 visible over these
+                      // columns specifically -- the plain bg-surface-1 header cells,
+                      // with no rgba layer, never showed it). Two background layers:
+                      // the tint on top, opaque surface-1 underneath.
+                      style={{
+                        backgroundImage: `linear-gradient(${GROUP_BG[col.group]}, ${GROUP_BG[col.group]})`,
+                        backgroundColor: "var(--color-surface-1)",
+                      }}
+                      className="sticky-thead cursor-pointer select-none whitespace-nowrap px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                     >
                       {col.label} {sortKey === col.key && (sortDir === "asc" ? "↑" : "↓")}
                     </th>
                   ))}
-                  <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Insight</th>
+                  <th className="sticky-thead whitespace-nowrap bg-surface-1 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Insight</th>
                 </tr>
               </thead>
               <tbody>

@@ -157,7 +157,7 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
       {sorted.length === 0 ? (
         <div className="px-4 py-10 text-center text-sm text-ink-muted">No product sales in this date range.</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-scroll-pane">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
@@ -166,8 +166,8 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                     key={col.key}
                     rowSpan={comparing ? 2 : 1}
                     onClick={() => toggleSort(col.key)}
-                    className={`${
-                      col.key === "title" ? "sticky left-0 z-10 bg-surface-1" : ""
+                    className={`sticky-thead ${
+                      col.key === "title" ? "sticky-thead-corner left-0 bg-surface-1" : "bg-surface-1"
                     } cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary`}
                   >
                     {col.label}
@@ -176,7 +176,7 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                 ))}
                 <th
                   rowSpan={comparing ? 2 : 1}
-                  className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted"
+                  className="sticky-thead whitespace-nowrap bg-surface-1 px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted"
                   title="Always compares to the immediately-adjacent previous period, regardless of the top bar's Compare to setting"
                 >
                   Performance
@@ -186,7 +186,7 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                     key={col.key}
                     colSpan={comparing ? 3 : 1}
                     onClick={() => toggleSort(col.key)}
-                    className="cursor-pointer select-none whitespace-nowrap px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
+                    className="sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary"
                   >
                     {col.label}
                     {sortKey === col.key && <span className="ml-1">{sortDir === "asc" ? "↑" : "↓"}</span>}
@@ -197,9 +197,9 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
                 <tr className="border-b border-border">
                   {NUMERIC_COLUMNS.map((col) => (
                     <Fragment key={col.key}>
-                      <th className="whitespace-nowrap bg-surface-2/50 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Now</th>
-                      <th className="whitespace-nowrap bg-surface-2/50 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Prior</th>
-                      <th className="whitespace-nowrap bg-surface-2/50 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Δ%</th>
+                      <th className="sticky-thead-2 whitespace-nowrap bg-surface-2 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Now</th>
+                      <th className="sticky-thead-2 whitespace-nowrap bg-surface-2 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Prior</th>
+                      <th className="sticky-thead-2 whitespace-nowrap bg-surface-2 px-3 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-ink-muted">Δ%</th>
                     </Fragment>
                   ))}
                 </tr>

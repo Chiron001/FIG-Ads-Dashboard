@@ -948,6 +948,46 @@ Build proceeds phase by phase per the project spec, committing after each.
       Screenshot-verified end to end (password gate, Google Ads, Shopify,
       Settings, collapsed sidebar, reload-persistence) with zero console
       errors before shipping.
+- [x] **Frozen headers on every big data table** (2026-08-18): scrolling a
+      table used to lose the header row entirely, making a wide table's
+      columns unreadable a few rows in. Root cause was a well-known CSS
+      trap, not a missing `position: sticky` -- these tables' horizontal
+      scroll wrapper (`overflow-x-auto`) unavoidably computes `overflow-y`
+      to `auto` too per spec, which makes *that* div "the nearest scroll
+      container" for sticky purposes instead of the page, and since the
+      div never itself needs to scroll vertically its sticky children have
+      nothing to stick to -- confirmed live that no `overflow-y` value
+      (`hidden`/`clip`/`visible`) fixes it, because all of them still
+      establish a scroll container. Fix: stop fighting it -- each table's
+      wrapper is now an intentional, bounded scroll pane
+      (`.table-scroll-pane`, `max-height: 65vh` with its own scrollbar,
+      same "frozen row" pattern as Google Sheets/Notion/Airtable) with the
+      header sticky relative to itself. Applied to all 8 big tables
+      (Campaign, Products, Ads, Meta Creative Performance, Meta SKU
+      Attribution, Shopify Products, Product Quadrants, Projection Sheet);
+      the two small non-scrolling tables were deliberately left alone.
+      Along the way, fixed two more real bugs the fix surfaced: the
+      Projection Sheet's color-tinted group headers used a translucent
+      `rgba` background (fine for body cells, meant to blend with hover
+      states) that let scrolled-past rows bleed through once that same
+      background sat on a *sticky* cell -- now layered over an opaque
+      base for headers only; and the comparison-mode two-row header's
+      `--thead-row-height` offset constant was a guessed `34px` that didn't
+      match row 1's real height (`32.5px`, since row 2 deliberately uses
+      smaller padding/font), leaving a 1.5px gap a row peeked through.
+      Screenshot-verified in both themes, single- and two-row headers,
+      realistic incremental scrolling. See `web/src/index.css` and the
+      `table-scroll-pane`/`sticky-thead` usages across `web/src/components/`.
+- [x] **Light theme depth pass** (2026-08-18): the first light-theme cut
+      read as flat -- page (`#f5f5f7`) and cards (`#ffffff`) measured too
+      close in tone for cards to visibly lift off the page, no matter how
+      the shadow was tuned. Deepened the page to `#e9ebef` (cards stay
+      crisp white) so the tone gap itself carries most of the depth cue;
+      strengthened glass opacity/shadows to match; and gave `KpiTile`'s
+      "glass sheen" diagonal highlight (previously a hardcoded
+      `rgba(255,255,255,0.06)`, invisible on a white card) its own
+      light-mode value via the same `--card-sheen-*` tokens the dark theme
+      already used. See `index.css`'s `:root[data-theme="light"]` block.
 
 ## Structure
 

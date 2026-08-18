@@ -350,7 +350,7 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
         {sorted.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-ink-muted">{data ? "Nothing matches the current filters." : "Loading…"}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll-pane">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
@@ -381,7 +381,7 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
                     <th
                       key={col.key}
                       onClick={() => toggleSort(col.key)}
-                      className={`cursor-pointer select-none whitespace-nowrap px-4 py-2 text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary ${
+                      className={`sticky-thead cursor-pointer select-none whitespace-nowrap bg-surface-1 px-4 py-2 text-xs font-medium uppercase tracking-wide text-ink-muted hover:text-ink-secondary ${
                         col.align === "right" ? "text-right" : "text-left"
                       }`}
                     >

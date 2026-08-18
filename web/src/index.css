@@ -101,6 +101,11 @@
   --glass-bg: rgba(16, 18, 22, 0.92);
   --glass-border: rgba(255, 255, 255, 0.09);
   --glass-highlight: rgba(255, 255, 255, 0.07);
+  /* KpiTile.tsx's "glass sheen" gradient -- the diagonal highlight that
+     reads as glass catching light. Overridden for light mode below (a
+     white-on-near-black highlight does nothing on a light card). */
+  --card-sheen-1: rgba(255, 255, 255, 0.06);
+  --card-sheen-2: rgba(255, 255, 255, 0);
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
@@ -127,15 +132,22 @@
    lib/theme.ts before React ever mounts (see main.tsx) so there's no
    flash-of-wrong-theme on load. */
 :root[data-theme="light"] {
-  --color-surface-0: #f5f5f7;
+  /* First pass used #f5f5f7 page / #ffffff cards -- confirmed live that the
+     two read as nearly the same tone, so every card looked like a flat
+     rectangle barely distinguishable from the page instead of something
+     sitting above it. Page is deepened to a real, slightly cool-toned gray
+     so white cards visibly LIFT off it -- the depth cue does most of the
+     work here, more than any shadow could alone. Cards stay crisp white
+     (data legibility is non-negotiable), surface-2 deepens to match. */
+  --color-surface-0: #e9ebef;
   --color-surface-1: #ffffff;
-  --color-surface-2: #eef0f2;
+  --color-surface-2: #dfe3e8;
 
   --color-ink-primary: #1d1d1f;
   --color-ink-secondary: #515154;
   --color-ink-muted: #86868b;
 
-  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border: rgba(0, 0, 0, 0.1);
   --color-grid: #e5e5e7;
   --color-axis: #d2d2d7;
 
@@ -151,11 +163,25 @@
   --color-accent: #0071e3;
   --color-accent-soft: rgba(0, 113, 227, 0.08);
 
-  --glass-bg: rgba(255, 255, 255, 0.75);
+  /* 0.82 (not the first pass's 0.75) against the now-deeper page -- enough
+     opacity that floating glass layers (TopBar, dropdowns) read as
+     genuinely frosted/lifted rather than "barely there," while backdrop-
+     blur still shows a visible frost of whatever scrolls underneath. */
+  --glass-bg: rgba(255, 255, 255, 0.82);
   --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.6);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  /* The KPI tile "glass sheen" (index.css's --card-sheen-*, used by
+     KpiTile.tsx) needs its own light-mode value -- the dark theme's white
+     highlight-on-near-black does nothing on a light card, so this is a
+     BRIGHT white pushing against the tile's own slightly-off-white glass
+     base instead, the same "catching light" effect via a different
+     mechanism. */
+  --card-sheen-1: rgba(255, 255, 255, 0.9);
+  --card-sheen-2: rgba(255, 255, 255, 0);
+  /* Stronger than the first pass -- deliberately, to give cards real lift
+     against the now-deeper page rather than reading as flat rectangles. */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.07), 0 10px 28px rgba(0, 0, 0, 0.1);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.14);
 }
 
 body {
@@ -233,6 +259,90 @@ body {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+}
+
+/* ============================================================================
+   Sticky table headers -- every big data table's header row stays visible
+   while scrolling through its (often hundreds of) rows, docking to the top
+   of the table's own scroll pane rather than scrolling away with the rows.
+
+   .table-scroll-pane is what makes this actually work, and replaces plain
+   `overflow-x-auto` on these tables' wrapper divs. Per the CSS overflow
+   spec, once an element's overflow-x is non-`visible`, overflow-y computes
+   to `auto` too (never `visible`) -- confirmed live, testing every value
+   (auto/hidden/clip/visible) on an `overflow-x-auto`-only wrapper. Any
+   non-`visible` computed overflow on EITHER axis makes that element "a
+   scroll container" for position:sticky's containing-block purposes --
+   so a plain `overflow-x-auto` div always becomes the sticky context,
+   hijacking it away from the page-level scroller. If that div's own height
+   just matches its content (never itself scrolls), a sticky child inside
+   has nowhere to "stick": it just flows away with the page. There is no
+   CSS-only way to keep the table's own header sticky *relative to the
+   page* once horizontal scroll is needed on an ancestor.
+   Fix: stop fighting it -- give the wrapper itself a bounded height and
+   real vertical scroll (`overflow: auto; max-height: ...`), so it becomes
+   an intentional scroll pane (the same "frozen header row" pattern as
+   Google Sheets/Notion/Airtable), and stick the header to `top: 0`
+   *relative to that pane* instead of the page. Confirmed live: with this,
+   `th.getBoundingClientRect().top` stays pinned to the pane's top edge
+   across any scrollTop value.
+
+   Applied to individual <th> cells, not <thead>/<tr> -- position:sticky on
+   a table-row-group/table-row display type isn't reliably supported
+   across browsers the way it is on table-cell (<th>) elements, the same
+   reason the sticky-left Product column is done per-cell too.
+
+   .sticky-thead: row 1 (or the only row) of a table's header -- add to
+   every <th> in that row. .sticky-thead-2: a SECOND header row (the
+   comparison mode's Now/Prior/Δ% sub-header, ShopifyProductTable's the
+   only user of it) -- docks just below row 1, not at the same offset.
+   --thead-row-height must equal row 1's real rendered height there or a
+   sliver of the row scrolled just behind it shows through the gap --
+   confirmed live (row 1 is px-4/py-2/text-xs -> 32.5px tall including its
+   border-bottom; row 2 is deliberately smaller, px-3/py-1.5/text-[10px],
+   so the two rows' heights were never actually equal despite this once
+   assuming otherwise -- the guessed 34px left a 1.5px gap that a data row
+   showed through). Revisit this constant if that table's row 1 styling
+   ever changes.
+   ========================================================================= */
+:root {
+  --thead-row-height: 32.5px;
+}
+
+.table-scroll-pane {
+  overflow: auto;
+  max-height: 65vh;
+}
+
+/* Known cosmetic edge case, not fixed here: with BOTH .sticky-thead and
+   .sticky-thead-2 stuck at once (comparison mode's two-row header) and a
+   single large synthetic scroll jump, Chromium can leave a stale sliver of
+   the row that just scrolled behind them faintly visible for one frame --
+   confirmed it's a stale raster, not a real z-index/opacity/paint-order
+   bug (elementFromPoint() at the seam correctly returns the <th> the
+   whole time, will-change/contain/transform hints don't change it, and
+   any further scroll of any size clears it instantly). Real trackpad/wheel
+   scrolling is many small deltas, not one jump, so this is very unlikely
+   to be seen in practice; revisit only if it turns out to be. */
+.sticky-thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-surface-1);
+}
+
+.sticky-thead-2 {
+  position: sticky;
+  top: var(--thead-row-height);
+  z-index: 10;
+}
+
+/* The one cell that's sticky on BOTH axes (top-left corner, e.g. the
+   Product column's header) needs to outrank plain top-sticky headers AND
+   plain left-sticky body cells as content scrolls in both directions at
+   once, or a lower z-index cell can flash on top of it at the corner. */
+.sticky-thead-corner {
+  z-index: 20;
 }
 
 /* ============================================================================
