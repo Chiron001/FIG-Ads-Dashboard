@@ -4,11 +4,11 @@ import { paretoAnalysis, contributionRanking, marginalRoas } from "./concentrati
 
 test("paretoAnalysis: known-answer fixture", () => {
   const campaigns = [
-    { campaignId: "a", campaignName: "A", revenue: 50 },
-    { campaignId: "b", campaignName: "B", revenue: 20 },
-    { campaignId: "c", campaignName: "C", revenue: 15 },
-    { campaignId: "d", campaignName: "D", revenue: 10 },
-    { campaignId: "e", campaignName: "E", revenue: 5 },
+    { campaignId: "a", campaignName: "A", revenue: 50, spend: 10 },
+    { campaignId: "b", campaignName: "B", revenue: 20, spend: 5 },
+    { campaignId: "c", campaignName: "C", revenue: 15, spend: 5 },
+    { campaignId: "d", campaignName: "D", revenue: 10, spend: 2 },
+    { campaignId: "e", campaignName: "E", revenue: 5, spend: 1 },
   ];
   // cumulative %: 50, 70, 85, 95, 100 -- crosses 80% at the 3rd campaign
   const result = paretoAnalysis(campaigns);
@@ -20,8 +20,8 @@ test("paretoAnalysis: known-answer fixture", () => {
 
 test("paretoAnalysis: zero total revenue -> 0% throughout, not NaN", () => {
   const campaigns = [
-    { campaignId: "a", campaignName: "A", revenue: 0 },
-    { campaignId: "b", campaignName: "B", revenue: 0 },
+    { campaignId: "a", campaignName: "A", revenue: 0, spend: 0 },
+    { campaignId: "b", campaignName: "B", revenue: 0, spend: 0 },
   ];
   const result = paretoAnalysis(campaigns);
   assert.ok(result.points.every((p) => p.cumulativePct === 0));

@@ -410,8 +410,8 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
             </InfoNote>
           </div>
           {totalAdSpend > 0 ? (
-            <div className="flex items-center gap-4">
-              <ResponsiveContainer width="60%" height={200}>
+            <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-stretch">
+              <ResponsiveContainer width="100%" height={280} className="sm:w-[46%]">
                 <PieChart>
                   <Tooltip
                     content={({ active, payload }) => {
@@ -428,7 +428,17 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
                       );
                     }}
                   />
-                  <Pie data={groups.filter((g) => g.spend > 0)} dataKey="spend" nameKey="quadrant" innerRadius="55%" outerRadius="90%" paddingAngle={2} isAnimationActive={false}>
+                  <Pie
+                    data={groups.filter((g) => g.spend > 0)}
+                    dataKey="spend"
+                    nameKey="quadrant"
+                    innerRadius="58%"
+                    outerRadius="95%"
+                    paddingAngle={2}
+                    isAnimationActive={false}
+                    label={({ percent }) => ((percent ?? 0) >= 0.08 ? formatPercent(percent ?? 0, 0) : "")}
+                    labelLine={false}
+                  >
                     {groups
                       .filter((g) => g.spend > 0)
                       .map((g) => (
@@ -437,14 +447,27 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              <div className="flex-1 space-y-1.5 text-xs">
+              {/* Richer than a plain %-share legend -- spend, revenue, and
+                  POAS per quadrant, matching the level of detail the ranked-
+                  bar panel on the left has, so this half of the pair doesn't
+                  read as sparse next to it (confirmed live: the old 4-row
+                  dot+percent legend left a lot of the taller card empty). */}
+              <div className="w-full flex-1 divide-y divide-border self-center">
                 {groups.map((g) => (
-                  <div key={g.quadrant} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-ink-secondary">
-                      <span className="inline-block h-2 w-2 rounded-full" style={{ background: QUADRANT_COLORS[g.quadrant] }} />
-                      {g.quadrant}
+                  <div key={g.quadrant} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: QUADRANT_COLORS[g.quadrant] }} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-ink-primary">{QUADRANT_META[g.quadrant].title}</span>
+                        <span className="block text-[11px] text-ink-muted">{formatNumber(g.count)} products</span>
+                      </span>
                     </span>
-                    <span className="tabular-nums text-ink-primary">{formatPercent(safeDivide(g.spend, totalAdSpend), 0)}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-xs tabular-nums text-ink-primary">{formatCurrency(g.spend, true)}</span>
+                      <span className="block text-[11px] tabular-nums text-ink-muted">
+                        {g.poas != null ? `${formatMultiplier(g.poas)} POAS` : "N/A POAS"}
+                      </span>
+                    </span>
                   </div>
                 ))}
               </div>

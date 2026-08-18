@@ -680,6 +680,7 @@ export interface ParetoPointDTO {
   campaignId: string;
   campaignName: string | null;
   revenue: number;
+  spend: number;
   cumulativePct: number;
 }
 

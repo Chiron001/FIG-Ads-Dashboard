@@ -988,6 +988,49 @@ Build proceeds phase by phase per the project spec, committing after each.
       `rgba(255,255,255,0.06)`, invisible on a white card) its own
       light-mode value via the same `--card-sheen-*` tokens the dark theme
       already used. See `index.css`'s `:root[data-theme="light"]` block.
+- [x] **Seven UI/UX fixes from screenshot feedback** (2026-08-18):
+      - **Date range dropdown made solid**: it floats directly over busy KPI
+        tiles/chart content with no dimmed backdrop behind it, so `.glass`'s
+        translucency there just read as illegible bleed-through, not an
+        intentional glass layer (unlike the command palette, which has a
+        dedicated backdrop). Now a plain solid card; its internal dividers/
+        inputs, previously hardcoded `border-white/10`/`bg-black/20`
+        (silently broken in light theme too, since white-on-white is
+        invisible), now use the regular theme-aware border/surface tokens.
+      - **Projection Sheet's Insight badge is click-to-open, not hover**: was
+        a native `title` tooltip (easy to miss, unusable on touch); now a
+        small click-triggered popup (`ProjectionInsightDrawer.tsx`) with the
+        product name, verdict badge, and full message.
+      - **Portfolio analysis Pareto chart gained a Spend/Revenue toggle**,
+        on both Google and Meta Ads pages, and the section now **defaults to
+        open** (was collapsed) -- required widening `ParetoPointDTO`/
+        `ParetoInput` (shared + server) to carry `spend` alongside `revenue`
+        per point; ranking/80%-crossing logic is still always revenue-based
+        (spec §6a) since `ParetoChart` already re-sorts/re-cumulates
+        client-side from whichever field is selected, so this needed no
+        backend logic change. Google's Pareto is now also **half-width**,
+        matching Meta's layout -- paired with "Profit contribution ranking"
+        (moved up from a full-width row below) instead of full-width alone;
+        Meta keeps catalogue spend in that slot and contribution ranking
+        stays a separate full-width row below, unchanged. See
+        `web/src/components/PortfolioView.tsx`.
+      - **Sidebar Settings moved to the bottom**, directly above the
+        Appearance toggle, instead of stranded mid-list with a long empty
+        stretch below it (`<nav>` is now a flex column, Settings' wrapper
+        gets `mt-auto`).
+      - **Shopify Product Quadrants' "Ad spend share by quadrant" donut
+        redesigned**: was a small fixed-200px donut + a thin 4-row %-only
+        legend, leaving much of the card empty next to its taller sibling
+        panel. Now a bigger donut with in-slice % labels and a richer
+        legend (product count, spend, POAS per quadrant) that fills the
+        card properly.
+      - **Sidebar is a fixed dark navy (`#003466`) brand rail even in light
+        theme**, explicit request -- only the main content area follows the
+        theme toggle. New `--sidebar-*` tokens (bg/border/ink/active/hover)
+        default to the existing surface/ink tokens in dark mode (no visual
+        change there) and are overridden to navy + light-on-navy text in
+        `:root[data-theme="light"]`; `PlatformSidebar.tsx` now references
+        these instead of the app-wide `surface-*`/`ink-*` tokens directly.
 
 ## Structure
 

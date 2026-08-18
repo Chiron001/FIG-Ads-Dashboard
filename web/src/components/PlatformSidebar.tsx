@@ -135,17 +135,17 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-border bg-surface-1 transition-[transform,width] duration-200 sm:static sm:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar-bg)] transition-[transform,width] duration-200 sm:static sm:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         } ${collapsed ? "w-16" : "w-60"}`}
       >
-        <div className={`flex items-center border-b border-border ${collapsed ? "flex-col gap-2 px-2 py-3" : "gap-2.5 px-4 py-4"}`}>
+        <div className={`flex items-center border-b border-[var(--sidebar-border)] ${collapsed ? "flex-col gap-2 px-2 py-3" : "gap-2.5 px-4 py-4"}`}>
           <div className={`flex min-w-0 flex-1 items-center ${collapsed ? "justify-center" : "gap-2.5"}`}>
             <img src="/figliving-logo.png" alt="FIG Living" className="h-6 w-6 shrink-0 object-contain invert" />
             {!collapsed && (
               <div className="min-w-0">
-                <h1 className="font-display truncate text-sm font-semibold leading-tight text-ink-primary">FIG Living</h1>
-                <p className="truncate text-xs text-ink-muted">Ads Dashboard</p>
+                <h1 className="font-display truncate text-sm font-semibold leading-tight text-[var(--sidebar-ink-primary)]">FIG Living</h1>
+                <p className="truncate text-xs text-[var(--sidebar-ink-muted)]">Ads Dashboard</p>
               </div>
             )}
           </div>
@@ -155,7 +155,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
             type="button"
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="shrink-0 rounded-md p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink-secondary"
+            className="shrink-0 rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-active-bg)] hover:text-[var(--sidebar-ink-secondary)]"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={`transition-transform ${collapsed ? "rotate-180" : ""}`}>
               <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -164,8 +164,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
           </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {!collapsed && <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Platforms</div>}
+        <nav className="flex flex-1 flex-col space-y-0.5 overflow-y-auto p-2">
+          {!collapsed && <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Platforms</div>}
           {ALL_PLATFORMS.map((platform) => {
             const isActive = platform === active;
             return (
@@ -176,7 +176,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                   onClick={() => handleChange(platform)}
                   className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
                     collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-                  } ${isActive ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
+                  } ${isActive ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
                 >
                   {isActive && (
                     <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] }} />
@@ -187,7 +187,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                   {!collapsed && (
                     <>
                       <span className="flex-1 truncate">{PLATFORM_LABELS[platform]}</span>
-                      {!connected[platform] && <span className="shrink-0 text-[10px] text-ink-muted">not connected</span>}
+                      {!connected[platform] && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
                     </>
                   )}
                 </button>
@@ -205,7 +205,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       title="Meta Ads — SKU Attribution"
                       onClick={() => handleChange("meta-sku-attribution")}
                       className={`rounded-md p-1.5 transition-colors ${
-                        active === "meta-sku-attribution" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                        active === "meta-sku-attribution" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
                       <TagIcon size={13} />
@@ -215,7 +215,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       title="Meta Ads — Creative Performance"
                       onClick={() => handleChange("meta-creative-performance")}
                       className={`rounded-md p-1.5 transition-colors ${
-                        active === "meta-creative-performance" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                        active === "meta-creative-performance" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
                       <FilmIcon size={13} />
@@ -229,8 +229,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       onClick={() => handleChange("meta-sku-attribution")}
                       className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                         active === "meta-sku-attribution"
-                          ? "bg-surface-2 text-ink-primary"
-                          : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                          ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                          : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
                       {active === "meta-sku-attribution" && (
@@ -244,8 +244,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       onClick={() => handleChange("meta-creative-performance")}
                       className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                         active === "meta-creative-performance"
-                          ? "bg-surface-2 text-ink-primary"
-                          : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                          ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                          : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
                       {active === "meta-creative-performance" && (
@@ -261,14 +261,14 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
 
           {/* Shopify isn't an ad platform -- ground-truth orders/products, own
               group so it doesn't read as "a 5th platform" it isn't. */}
-          {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Store</div>}
+          {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Store</div>}
           <button
             type="button"
             title={collapsed ? `Shopify${shopifyConnected ? "" : " (not connected)"}` : undefined}
             onClick={() => handleChange("shopify")}
             className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
               collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-            } ${active === "shopify" ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
+            } ${active === "shopify" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
           >
             {active === "shopify" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />}
             <span className="relative shrink-0" style={{ opacity: shopifyConnected ? 1 : 0.4 }}>
@@ -277,7 +277,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
             {!collapsed && (
               <>
                 <span className="flex-1 truncate">Shopify</span>
-                {!shopifyConnected && <span className="shrink-0 text-[10px] text-ink-muted">not connected</span>}
+                {!shopifyConnected && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
               </>
             )}
           </button>
@@ -293,7 +293,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                 title="Shopify — Product Quadrants"
                 onClick={() => handleChange("shopify-product-quadrants")}
                 className={`rounded-md p-1.5 transition-colors ${
-                  active === "shopify-product-quadrants" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  active === "shopify-product-quadrants" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                 }`}
               >
                 <QuadrantIcon size={13} />
@@ -305,8 +305,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               onClick={() => handleChange("shopify-product-quadrants")}
               className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                 active === "shopify-product-quadrants"
-                  ? "bg-surface-2 text-ink-primary"
-                  : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                  : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
               }`}
             >
               {active === "shopify-product-quadrants" && (
@@ -325,7 +325,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                 title="Shopify — Projection Sheet"
                 onClick={() => handleChange("shopify-projection-sheet")}
                 className={`rounded-md p-1.5 transition-colors ${
-                  active === "shopify-projection-sheet" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  active === "shopify-projection-sheet" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                 }`}
               >
                 <TargetIcon size={13} />
@@ -337,8 +337,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               onClick={() => handleChange("shopify-projection-sheet")}
               className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
                 active === "shopify-projection-sheet"
-                  ? "bg-surface-2 text-ink-primary"
-                  : "text-ink-muted hover:bg-surface-2/60 hover:text-ink-secondary"
+                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                  : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
               }`}
             >
               {active === "shopify-projection-sheet" && (
@@ -350,46 +350,51 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
 
           {/* App-wide config (API integration status, COGS %, EBITDA cost
               inputs) -- its own group, not nested under a platform or
-              Shopify, since it isn't a lens on either. */}
-          {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-ink-muted">Admin</div>}
-          <button
-            type="button"
-            title={collapsed ? "Settings" : undefined}
-            onClick={() => handleChange("settings")}
-            className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
-              collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-            } ${active === "settings" ? "bg-surface-2 text-ink-primary" : "text-ink-secondary hover:bg-surface-2/60 hover:text-ink-primary"}`}
-          >
-            {active === "settings" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
-            <span className="relative shrink-0">
-              <GearIcon size={18} />
-            </span>
-            {!collapsed && <span className="flex-1 truncate">Settings</span>}
-          </button>
+              Shopify, since it isn't a lens on either. Pinned to the bottom
+              of the nav (mt-auto, nav is now a flex column) so it sits
+              directly above the Appearance toggle instead of stranded mid-
+              list with a long stretch of empty sidebar below it. */}
+          <div className="mt-auto">
+            {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Admin</div>}
+            <button
+              type="button"
+              title={collapsed ? "Settings" : undefined}
+              onClick={() => handleChange("settings")}
+              className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
+                collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+              } ${active === "settings" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
+            >
+              {active === "settings" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
+              <span className="relative shrink-0">
+                <GearIcon size={18} />
+              </span>
+              {!collapsed && <span className="flex-1 truncate">Settings</span>}
+            </button>
+          </div>
         </nav>
 
-        <div className={`border-t border-border ${collapsed ? "flex flex-col items-center gap-2 px-2 py-3" : "px-4 py-3"}`}>
+        <div className={`border-t border-[var(--sidebar-border)] ${collapsed ? "flex flex-col items-center gap-2 px-2 py-3" : "px-4 py-3"}`}>
           {collapsed ? (
             <button
               type="button"
               onClick={() => onThemeChange(theme === "dark" ? "light" : "dark")}
               title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink-secondary"
+              className="rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-active-bg)] hover:text-[var(--sidebar-ink-secondary)]"
             >
               {theme === "dark" ? <MoonIcon size={15} /> : <SunIcon size={15} />}
             </button>
           ) : (
             <>
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Appearance</span>
-                <div className="flex rounded-md border border-border p-0.5">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Appearance</span>
+                <div className="flex rounded-md border border-[var(--sidebar-border)] p-0.5">
                   <button
                     type="button"
                     onClick={() => onThemeChange("light")}
                     title="Light theme"
                     aria-pressed={theme === "light"}
                     className={`rounded px-2 py-1 transition-colors ${
-                      theme === "light" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                      theme === "light" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:text-[var(--sidebar-ink-secondary)]"
                     }`}
                   >
                     <SunIcon size={13} />
@@ -400,14 +405,14 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     title="Dark theme"
                     aria-pressed={theme === "dark"}
                     className={`rounded px-2 py-1 transition-colors ${
-                      theme === "dark" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                      theme === "dark" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:text-[var(--sidebar-ink-secondary)]"
                     }`}
                   >
                     <MoonIcon size={13} />
                   </button>
                 </div>
               </div>
-              <p className="mt-2 text-[11px] text-ink-muted">Internal tool, password-protected</p>
+              <p className="mt-2 text-[11px] text-[var(--sidebar-ink-muted)]">Internal tool, password-protected</p>
             </>
           )}
         </div>

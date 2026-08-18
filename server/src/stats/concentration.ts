@@ -4,6 +4,10 @@ export interface ParetoInput {
   campaignId: string;
   campaignName: string | null;
   revenue: number;
+  /** Carried through untouched -- lets the frontend re-sort/re-cumulate
+   * this same point set by spend instead of revenue without a second
+   * endpoint. Ranking here is still always by revenue (spec §6a). */
+  spend: number;
 }
 
 export interface ParetoPoint extends ParetoInput {

@@ -79,7 +79,7 @@ export function PlatformSection({
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showPortfolio, setShowPortfolio] = useState(true);
   const [showProducts, setShowProducts] = useState(false);
   const [showAds, setShowAds] = useState(false);
 

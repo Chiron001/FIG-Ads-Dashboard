@@ -69,8 +69,12 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
         </svg>
       </button>
 
+      {/* Solid, not .glass -- this floats directly over busy KPI tiles/chart
+          content with no dimmed backdrop behind it (unlike CommandPalette,
+          which has one), so translucency here just reads as illegible
+          bleed-through rather than an intentional glass layer. */}
       {open && (
-        <div className="glass animate-fade-slide-in absolute right-0 z-20 mt-1.5 w-80 overflow-hidden rounded-xl">
+        <div className="animate-fade-slide-in absolute right-0 z-20 mt-1.5 w-80 overflow-hidden rounded-xl border border-border bg-surface-1 shadow-[var(--shadow-glass)]">
           <div className="p-3">
             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Date range</div>
             <div className="grid grid-cols-2 gap-1">
@@ -82,7 +86,7 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
                     type="button"
                     onClick={() => setDraftRange(presetRange(preset))}
                     className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      selected ? "bg-accent-soft text-accent" : "text-ink-primary hover:bg-white/[0.06]"
+                      selected ? "bg-accent-soft text-accent" : "text-ink-primary hover:bg-surface-2"
                     }`}
                   >
                     {PRESET_LABELS[preset]}
@@ -100,7 +104,7 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
                   setCustomFrom(e.target.value);
                   setDraftRange({ preset: "custom", from: e.target.value, to: customTo });
                 }}
-                className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
+                className="w-full rounded-md border border-border bg-surface-0 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
               />
               <span className="text-ink-muted">–</span>
               <input
@@ -111,12 +115,12 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
                   setCustomTo(e.target.value);
                   setDraftRange({ preset: "custom", from: customFrom, to: e.target.value });
                 }}
-                className="w-full rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
+                className="w-full rounded-md border border-border bg-surface-0 px-2 py-1.5 text-sm text-ink-primary tabular-nums"
               />
             </div>
           </div>
 
-          <div className="border-t border-white/10 p-3">
+          <div className="border-t border-border p-3">
             <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-muted">Compare to</div>
             <div className="grid grid-cols-1 gap-1">
               {COMPARISON_MODE_ORDER.map((mode) => {
@@ -127,7 +131,7 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
                     type="button"
                     onClick={() => setDraftComparison(mode)}
                     className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      selected ? "bg-accent-soft text-accent" : "text-ink-primary hover:bg-white/[0.06]"
+                      selected ? "bg-accent-soft text-accent" : "text-ink-primary hover:bg-surface-2"
                     }`}
                   >
                     {COMPARISON_LABELS[mode]}
@@ -142,7 +146,7 @@ export function DateRangePicker({ value, comparisonMode, onApply }: Props) {
             </div>
           </div>
 
-          <div className="border-t border-white/10 p-3">
+          <div className="border-t border-border p-3">
             <button
               type="button"
               onClick={apply}

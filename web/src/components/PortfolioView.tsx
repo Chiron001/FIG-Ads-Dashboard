@@ -35,6 +35,7 @@ export function PortfolioView({ platform, range, grossMargin, targetRoas, color,
   const [products, setProducts] = useState<MetricsProductsResponse | null>(null);
   const [comparisonData, setComparisonData] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [paretoMetric, setParetoMetric] = useState<"revenue" | "spend">("revenue");
 
   useEffect(() => {
     let cancelled = false;
@@ -81,30 +82,86 @@ export function PortfolioView({ platform, range, grossMargin, targetRoas, color,
     return <div className="rounded-2xl border border-border bg-surface-1 px-4 py-8 text-center text-sm text-ink-muted">No campaign data in this range.</div>;
   }
 
-  const paretoItems = data.pareto.map((p) => ({ key: p.campaignId, label: p.campaignName ?? p.campaignId, value: p.revenue }));
+  const paretoItems = data.pareto.map((p) => ({ key: p.campaignId, label: p.campaignName ?? p.campaignId, value: paretoMetric === "revenue" ? p.revenue : p.spend }));
   const showCatalogueSpend = platform === "meta";
 
-  const totalRevenue = data.pareto.reduce((s, p) => s + p.revenue, 0);
-  const comparisonRevenue = comparisonData ? comparisonData.pareto.reduce((s, p) => s + p.revenue, 0) : null;
-  const revenueDelta = comparisonMode !== "none" ? computeDelta(totalRevenue, comparisonRevenue) : undefined;
+  const totalParetoValue = data.pareto.reduce((s, p) => s + (paretoMetric === "revenue" ? p.revenue : p.spend), 0);
+  const comparisonParetoValue = comparisonData
+    ? comparisonData.pareto.reduce((s, p) => s + (paretoMetric === "revenue" ? p.revenue : p.spend), 0)
+    : null;
+  const paretoDelta = comparisonMode !== "none" ? computeDelta(totalParetoValue, comparisonParetoValue) : undefined;
+
+  // Ranked by absolute profit (revenue × margin − spend), not ROAS -- reused
+  // in both layout slots below (Meta's right column is taken by catalogue
+  // spend, so this drops to its own full-width row instead; every other
+  // platform has nothing to pair with the Pareto chart, so this fills that
+  // slot directly rather than stacking below it).
+  const contributionPanel = (
+    <div className="rounded-2xl border border-border bg-surface-1">
+      <div className="border-b border-border px-4 py-3">
+        <h3 className="text-sm font-semibold text-ink-primary">Profit contribution ranking</h3>
+        <p className="mt-0.5 text-xs text-ink-muted">Ranked by absolute profit (revenue × margin − spend), not ROAS.</p>
+      </div>
+      <div className="max-h-96 overflow-y-auto">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-surface-1">
+            <tr className="border-b border-border">
+              <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Campaign</th>
+              <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Contribution</th>
+              <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% of Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.contribution.map((c) => (
+              <tr key={c.campaignId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
+                <td className="max-w-xs truncate px-4 py-2 font-medium text-ink-primary">{c.campaignName ?? c.campaignId}</td>
+                <td className={`px-4 py-2 text-right tabular-nums ${c.contribution > 0 ? "text-status-good" : c.contribution < 0 ? "text-status-critical" : "text-ink-secondary"}`}>
+                  {formatCurrency(c.contribution)}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(c.pctOfTotal, 1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
-      <div className={`grid grid-cols-1 gap-4 ${showCatalogueSpend ? "lg:grid-cols-2" : ""}`}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface-1 p-4">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-1">
-            <h3 className="text-sm font-semibold text-ink-primary">Revenue concentration (Pareto)</h3>
-            {revenueDelta !== undefined && (
-              <span className="text-xs text-ink-muted">
-                {formatCurrency(totalRevenue, true)} vs {COMPARISON_LABELS[comparisonMode].toLowerCase()}
-                <DeltaBadge value={revenueDelta} />
-              </span>
-            )}
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-ink-primary">
+              {paretoMetric === "revenue" ? "Revenue" : "Spend"} concentration (Pareto)
+            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              {paretoDelta !== undefined && (
+                <span className="text-xs text-ink-muted">
+                  {formatCurrency(totalParetoValue, true)} vs {COMPARISON_LABELS[comparisonMode].toLowerCase()}
+                  <DeltaBadge value={paretoDelta} />
+                </span>
+              )}
+              <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs">
+                {(["revenue", "spend"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setParetoMetric(m)}
+                    className={`rounded px-2.5 py-1 capitalize transition-colors ${
+                      paretoMetric === m ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <ParetoChart items={paretoItems} color={color} unitLabel="campaigns" valueFormatter={(v) => formatCurrency(v, true)} />
         </div>
 
-        {showCatalogueSpend && (
+        {showCatalogueSpend ? (
           <div className="rounded-2xl border border-border bg-surface-1 p-4">
             <div className="mb-2 flex items-baseline justify-between">
               <h3 className="text-sm font-semibold text-ink-primary">Product-wise catalogue spend</h3>
@@ -119,37 +176,12 @@ export function PortfolioView({ platform, range, grossMargin, targetRoas, color,
               />
             </div>
           </div>
+        ) : (
+          contributionPanel
         )}
       </div>
 
-      <div className="rounded-2xl border border-border bg-surface-1">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-sm font-semibold text-ink-primary">Profit contribution ranking</h3>
-          <p className="mt-0.5 text-xs text-ink-muted">Ranked by absolute profit (revenue × margin − spend), not ROAS.</p>
-        </div>
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-surface-1">
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-ink-muted">Campaign</th>
-                <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">Contribution</th>
-                <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wide text-ink-muted">% of Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.contribution.map((c) => (
-                <tr key={c.campaignId} className="border-b border-border last:border-0 transition-colors hover:bg-accent-soft">
-                  <td className="max-w-xs truncate px-4 py-2 font-medium text-ink-primary">{c.campaignName ?? c.campaignId}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${c.contribution > 0 ? "text-status-good" : c.contribution < 0 ? "text-status-critical" : "text-ink-secondary"}`}>
-                    {formatCurrency(c.contribution)}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums text-ink-secondary">{formatPercent(c.pctOfTotal, 1)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {showCatalogueSpend && contributionPanel}
     </div>
   );
 }

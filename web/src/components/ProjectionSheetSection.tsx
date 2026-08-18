@@ -4,6 +4,7 @@ import { fetchProjection, updateProjection } from "../lib/api";
 import { formatCurrency, formatCurrencyPrecise, formatNumber, formatNumberOneDecimal, formatPercent } from "../lib/format";
 import { KpiTile } from "./KpiTile";
 import { InfoNote } from "./InfoNote";
+import { ProjectionInsightDrawer } from "./ProjectionInsightDrawer";
 
 const INSIGHT_META: Record<ProjectionInsightVerdict, { label: string; color: string }> = {
   on_track: { label: "On Track", color: "#4ade80" },
@@ -81,6 +82,7 @@ export function ProjectionSheetSection({ connected }: Props) {
   const [sortKey, setSortKey] = useState<keyof ProjectionRow>("title");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [filterMode, setFilterMode] = useState<"all" | "complete" | "incomplete">("all");
+  const [insightDrawerRow, setInsightDrawerRow] = useState<ProjectionRow | null>(null);
 
   function load() {
     setLoading(true);
@@ -418,13 +420,14 @@ export function ProjectionSheetSection({ connected }: Props) {
                         </td>
                       ))}
                       <td className="whitespace-nowrap px-3 py-2">
-                        <span
-                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                        <button
+                          type="button"
+                          onClick={() => setInsightDrawerRow(row)}
+                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-80"
                           style={{ background: `color-mix(in oklab, ${insight.color} 16%, transparent)`, color: insight.color }}
-                          title={row.insight.message}
                         >
                           {insight.label}
-                        </span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -434,6 +437,16 @@ export function ProjectionSheetSection({ connected }: Props) {
           </div>
         )}
       </div>
+
+      {insightDrawerRow && (
+        <ProjectionInsightDrawer
+          productTitle={insightDrawerRow.title}
+          label={INSIGHT_META[insightDrawerRow.insight.verdict].label}
+          color={INSIGHT_META[insightDrawerRow.insight.verdict].color}
+          message={insightDrawerRow.insight.message}
+          onClose={() => setInsightDrawerRow(null)}
+        />
+      )}
     </div>
   );
 }

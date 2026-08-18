@@ -505,7 +505,7 @@ metricsRouter.get("/products/pareto", asyncHandler(async (req, res) => {
     params
   );
 
-  const pareto = paretoAnalysis(rows.map((r) => ({ campaignId: r.product_item_id, campaignName: r.product_title, revenue: r.revenue })));
+  const pareto = paretoAnalysis(rows.map((r) => ({ campaignId: r.product_item_id, campaignName: r.product_title, revenue: r.revenue, spend: r.spend })));
   const paretoDTO: ProductParetoPointDTO[] = pareto.points.map((p) => ({
     productItemId: p.campaignId,
     productTitle: p.campaignName,
