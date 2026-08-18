@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Platform } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { PLATFORM_COLORS } from "../lib/platformColors";
+import type { Theme } from "../lib/theme";
 import { PlatformIcon } from "./icons/PlatformIcon";
 import { ShopifyIcon } from "./icons/ShopifyIcon";
 
@@ -33,6 +34,8 @@ interface Props {
    * static layout (collapsed/expanded via its own button instead). */
   mobileOpen: boolean;
   onMobileClose: () => void;
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
 }
 
 function TagIcon({ size }: { size: number }) {
@@ -86,9 +89,31 @@ function GearIcon({ size }: { size: number }) {
   );
 }
 
+function SunIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M8 1.3v1.5M8 13.2v1.5M14.7 8h-1.5M2.8 8H1.3M12.6 3.4l-1.06 1.06M4.46 11.54l-1.06 1.06M12.6 12.6l-1.06-1.06M4.46 4.46 3.4 3.4"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M13.5 9.3A5.6 5.6 0 1 1 6.7 2.5a4.4 4.4 0 0 0 6.8 6.8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // No localStorage per spec (React state only) -- collapse state is a
 // per-session UI preference, not data, so resetting on reload is fine.
-export function PlatformSidebar({ active, onChange, connected, shopifyConnected, mobileOpen, onMobileClose }: Props) {
+export function PlatformSidebar({ active, onChange, connected, shopifyConnected, mobileOpen, onMobileClose, theme, onThemeChange }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   // Picking a destination on mobile should also close the drawer -- it's
@@ -343,9 +368,49 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
           </button>
         </nav>
 
-        {!collapsed && (
-          <div className="border-t border-border px-4 py-3 text-[11px] text-ink-muted">Internal tool, password-protected</div>
-        )}
+        <div className={`border-t border-border ${collapsed ? "flex flex-col items-center gap-2 px-2 py-3" : "px-4 py-3"}`}>
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => onThemeChange(theme === "dark" ? "light" : "dark")}
+              title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink-secondary"
+            >
+              {theme === "dark" ? <MoonIcon size={15} /> : <SunIcon size={15} />}
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Appearance</span>
+                <div className="flex rounded-md border border-border p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onThemeChange("light")}
+                    title="Light theme"
+                    aria-pressed={theme === "light"}
+                    className={`rounded px-2 py-1 transition-colors ${
+                      theme === "light" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                    }`}
+                  >
+                    <SunIcon size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onThemeChange("dark")}
+                    title="Dark theme"
+                    aria-pressed={theme === "dark"}
+                    className={`rounded px-2 py-1 transition-colors ${
+                      theme === "dark" ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                    }`}
+                  >
+                    <MoonIcon size={13} />
+                  </button>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-ink-muted">Internal tool, password-protected</p>
+            </>
+          )}
+        </div>
       </aside>
     </>
   );

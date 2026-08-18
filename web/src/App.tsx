@@ -16,6 +16,7 @@ import { ProjectionSheetSection } from "./components/ProjectionSheetSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { SpendFlowBand } from "./components/SpendFlowBand";
 import { CommandPalette } from "./components/CommandPalette";
+import { applyTheme, getStoredTheme, setStoredTheme, type Theme } from "./lib/theme";
 import "./App.css";
 
 // Server-side .env defaults (GROSS_MARGIN/TARGET_ROAS), used only until
@@ -36,6 +37,17 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // main.tsx already applied the stored value to <html> before this ever
+  // mounts (no flash) -- this state exists so the sidebar toggle has
+  // something to read/drive; re-applying on change is what actually
+  // updates the page.
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme());
+
+  function handleThemeChange(next: Theme) {
+    setTheme(next);
+    setStoredTheme(next);
+    applyTheme(next);
+  }
 
   // Campaign-table economics -- fetched once as a starting point, then
   // live-editable from the top bar (spec: "expose it as an editable field
@@ -150,6 +162,8 @@ function App() {
         shopifyConnected={shopifyStatus?.connected ?? false}
         mobileOpen={sidebarOpen}
         onMobileClose={() => setSidebarOpen(false)}
+        theme={theme}
+        onThemeChange={handleThemeChange}
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">

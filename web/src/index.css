@@ -3,10 +3,15 @@
 /* ============================================================================
    FIG Living — "Midnight Atelier" design system
    ============================================================================
-   Dark-only, deliberately (per the original build spec, reconfirmed when this
-   visual pass was scoped) -- no [data-theme="light"] override, no toggle.
-   Every effort here goes into ONE excellent dark theme rather than splitting
-   focus across two.
+   Was dark-only through several iterations of this build; a light theme +
+   sidebar toggle were added on explicit request, styled after Apple's own
+   light interfaces (San Francisco-adjacent type rhythm, the #f5f5f7 page
+   gray, hairline borders instead of heavy ones, soft diffuse shadows, and
+   Apple's own systemBlue #0071e3 as this theme's accent -- FIG's warm amber
+   stays the dark-theme accent unchanged, since that choice was original
+   brand intent, not a limitation). See the `[data-theme="light"]` block
+   below the dark defaults, `web/src/lib/theme.ts` for the persistence/
+   apply logic, and the toggle in PlatformSidebar.tsx.
 
    Governing rule (UI/UX spec §0): glass is a material for FLOATING layers
    only -- the top bar, dropdowns, the command palette, tooltips, the drawer.
@@ -100,12 +105,69 @@
   --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
+/* ============================================================================
+   Light theme -- "Apple style": the #f5f5f7 page gray and white cards Apple
+   uses across macOS/iOS and apple.com, San-Francisco-style ink grays,
+   hairline borders instead of the dark theme's heavier ones, soft diffuse
+   shadows instead of hard black ones, and Apple's own systemBlue (#0071e3)
+   as the accent -- deliberately NOT the dark theme's amber, both because
+   Apple blue is core to reading as "Apple style" at all, and because the
+   amber is too light to give white on-accent text (buttons using
+   `bg-accent ... text-surface-0`) enough contrast once surface-0 flips
+   from near-black to near-white. Every status/platform/chart color below
+   this point (roasColor.ts, platformColors.ts, per-component chart fills)
+   is intentionally UNCHANGED across both themes -- categorical/sequential
+   marks read fine on either surface; only TEXT needed re-tuning; a full
+   per-theme chart-palette re-validation was out of scope for this pass.
+
+   `:root[data-theme="light"]` (pseudo-class + attribute, specificity 0,2,0)
+   deliberately outranks the bare `:root` the dark values above compile to
+   (specificity 0,1,0), so this wins regardless of source order -- no
+   `!important` needed. Applied via `data-theme` on <html>, set by
+   lib/theme.ts before React ever mounts (see main.tsx) so there's no
+   flash-of-wrong-theme on load. */
+:root[data-theme="light"] {
+  --color-surface-0: #f5f5f7;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #eef0f2;
+
+  --color-ink-primary: #1d1d1f;
+  --color-ink-secondary: #515154;
+  --color-ink-muted: #86868b;
+
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-grid: #e5e5e7;
+  --color-axis: #d2d2d7;
+
+  /* Re-tuned for AA text contrast on white (the dark theme's brighter
+     tones were chosen to pop off near-black and measure poorly as text on
+     white) -- otherwise the same four hues/roles, unchanged hierarchy. */
+  --color-status-good: #15803d;
+  --color-status-warning: #b45309;
+  --color-status-serious: #c2410c;
+  --color-status-critical: #dc2626;
+  --color-status-info: #2563eb;
+
+  --color-accent: #0071e3;
+  --color-accent-soft: rgba(0, 113, 227, 0.08);
+
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.6);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
 body {
   margin: 0;
   background: var(--color-surface-0);
   color: var(--color-ink-primary);
   font-family: var(--font-sans);
   color-scheme: dark;
+}
+
+:root[data-theme="light"] body {
+  color-scheme: light;
 }
 
 #root {
