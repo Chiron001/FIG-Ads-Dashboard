@@ -925,6 +925,29 @@ Build proceeds phase by phase per the project spec, committing after each.
       same philosophy as the Projection Sheet's Insight column) plus every
       underlying metric's current-vs-previous delta. See
       `web/src/lib/productInsight.ts`.
+- [x] **Light/dark theme toggle**, "Appearance" control at the bottom of
+      the sidebar -- reverses the earlier "dark-only, deliberately, no
+      toggle" decision on explicit request. Light theme is styled after
+      Apple's own light interfaces: the #f5f5f7 page gray + white cards,
+      San-Francisco-adjacent ink grays, hairline borders, soft diffuse
+      shadows, and Apple's systemBlue (#0071e3) as this theme's accent
+      (deliberately not the dark theme's amber, carried over unchanged --
+      Apple blue is core to reading as "Apple style," and the amber
+      measures too light for on-accent button text once the surface
+      flips from near-black to near-white). Status colors got their own
+      light-mode-specific values too (the dark theme's brighter tones
+      measure poorly as text on white); platform brand colors and every
+      chart-fill hex are deliberately unchanged in both themes (Recharts
+      SVG props don't reliably resolve CSS custom properties, a standing
+      finding from earlier in this build; a full per-theme chart-palette
+      re-validation was out of scope for this pass). `data-theme` on
+      `<html>`, applied synchronously before React mounts so there's no
+      flash of the wrong theme, persisted to localStorage (a deliberate,
+      explicit exception to this app's usual no-localStorage convention
+      for UI state). See `web/src/lib/theme.ts` and `index.css`.
+      Screenshot-verified end to end (password gate, Google Ads, Shopify,
+      Settings, collapsed sidebar, reload-persistence) with zero console
+      errors before shipping.
 
 ## Structure
 
