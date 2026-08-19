@@ -1054,6 +1054,25 @@ Build proceeds phase by phase per the project spec, committing after each.
       its Format/Style/Gender columns while the SKU-only ads around it
       correctly show N/A). Verified against the real account: 44 distinct
       creatives from 44 tagged ads for Last 7 Days (was 0 before the fix).
+- [x] **Auto-sync on load + a single "Sync all" button** (2026-08-19): every
+      platform used to need its own manual "Sync now" click before trusting
+      what's on screen -- tedious across a working session. `App.tsx` now
+      has one `handleSyncAll()` that fires `triggerSync`/`triggerShopifySync`
+      for every *connected* platform (skips Amazon/Myntra, on hold) for the
+      current top-bar date range, in parallel via `Promise.allSettled` (one
+      platform's API hiccup doesn't block the others). It runs automatically
+      exactly once per page load, as soon as the initial connection-status
+      fetch resolves (a `statusLoaded` flag distinct from `syncStatus` being
+      non-null, since that also stays null on a failed fetch -- needed
+      "the attempt finished" as its own signal, not "and it happened to
+      succeed"), and it's also wired to a new "Sync all" button in the
+      TopBar for on-demand use, next to the date range picker -- spinning
+      icon + disabled while in flight, same as each section's own local
+      "Sync now" button already did. Verified live: page load correctly
+      fires exactly `/sync/google`, `/sync/meta`, `/shopify/sync` (not
+      Amazon/Myntra); the button correctly disables on click and re-enables
+      once every platform's real API sync round-trip finishes (can take
+      30-60s+, that's the platforms' own APIs, not this).
 
 ## Structure
 

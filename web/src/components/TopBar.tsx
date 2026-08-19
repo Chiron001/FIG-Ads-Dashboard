@@ -19,6 +19,25 @@ interface Props {
   range: DateRange;
   onApplyDateAndComparison: (range: DateRange, comparisonMode: ComparisonMode) => void;
   onOpenPalette: () => void;
+  /** Syncs every connected platform for the current date range in one go --
+   * see App.tsx's handleSyncAll. Also fired automatically once per page
+   * load; this button is the on-demand version of the same thing. */
+  onSyncAll: () => void;
+  syncingAll: boolean;
+}
+
+function SyncIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className={spinning ? "animate-spin" : undefined}>
+      <path
+        d="M13.5 8a5.5 5.5 0 1 1-1.6-3.89M13.5 2v3.5H10"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 /** The one floating glass layer that's always on screen -- everything else
@@ -39,6 +58,8 @@ export function TopBar({
   range,
   onApplyDateAndComparison,
   onOpenPalette,
+  onSyncAll,
+  syncingAll,
 }: Props) {
   return (
     <header className="glass sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-6 py-3.5">
@@ -103,6 +124,17 @@ export function TopBar({
         </div>
 
         <DateRangePicker value={range} comparisonMode={comparisonMode} onApply={onApplyDateAndComparison} />
+
+        <button
+          type="button"
+          onClick={onSyncAll}
+          disabled={syncingAll}
+          title="Sync every connected platform for the current date range"
+          className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-ink-secondary transition-colors hover:text-ink-primary disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <SyncIcon spinning={syncingAll} />
+          <span className="hidden sm:inline">{syncingAll ? "Syncing all…" : "Sync all"}</span>
+        </button>
       </div>
     </header>
   );

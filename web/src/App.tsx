@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Platform, SyncStatusResponse, ShopifyStatus } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
 import { type ComparisonMode } from "./lib/comparisonRange";
-import { fetchSyncStatus, fetchConfig, fetchShopifyStatus } from "./lib/api";
+import { fetchSyncStatus, fetchConfig, fetchShopifyStatus, triggerSync, triggerShopifySync } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
@@ -67,6 +67,13 @@ function App() {
       });
   }, []);
 
+  // Distinct from syncStatus/shopifyStatus themselves being non-null --
+  // those stay null on a failed fetch (see the catch handlers below), so
+  // "is either non-null yet" can't tell "still loading" apart from "loaded
+  // and it failed." The auto-sync-on-load effect needs the latter case too
+  // (nothing connected, so there's nothing to sync -- not "wait forever").
+  const [statusLoaded, setStatusLoaded] = useState(false);
+
   const loadSyncStatus = useCallback(() => {
     fetchSyncStatus()
       .then((s) => {
@@ -76,7 +83,8 @@ function App() {
       .catch((err) => {
         setSyncStatus(null);
         setSyncStatusError(String(err?.message ?? err));
-      });
+      })
+      .finally(() => setStatusLoaded(true));
     fetchShopifyStatus()
       .then(setShopifyStatus)
       .catch(() => setShopifyStatus(null));
@@ -106,6 +114,44 @@ function App() {
     }
     return map;
   }, [syncStatus]);
+
+  // Syncs every connected platform (ad platforms + Shopify) for the current
+  // top-bar date range in one go -- same range each platform's own local
+  // "Sync now" button already uses, just fired for all of them at once
+  // instead of one at a time. Promise.allSettled, not .all: one platform's
+  // API hiccup shouldn't abort the others still in flight. Not wrapped in
+  // useCallback's usual guard against "nothing connected" being a silent
+  // no-op -- it already is one, syncingAll just never flips true.
+  const [syncingAll, setSyncingAll] = useState(false);
+  const handleSyncAll = useCallback(async () => {
+    const adPlatforms = ALL_PLATFORMS.filter((p) => connectedMap[p]);
+    const syncShopify = shopifyStatus?.connected ?? false;
+    if (adPlatforms.length === 0 && !syncShopify) return;
+
+    setSyncingAll(true);
+    try {
+      await Promise.allSettled([
+        ...adPlatforms.map((p) => triggerSync(p, range.from, range.to)),
+        ...(syncShopify ? [triggerShopifySync(range.from, range.to)] : []),
+      ]);
+    } finally {
+      setSyncingAll(false);
+      setRefreshKey((k) => k + 1);
+      loadSyncStatus();
+    }
+  }, [connectedMap, shopifyStatus, range.from, range.to, loadSyncStatus]);
+
+  // Fires exactly once per page load, as soon as we know which platforms
+  // are actually connected (statusLoaded, not just syncStatus/shopifyStatus
+  // being non-null -- see its own comment) -- "auto sync whenever the
+  // dashboard is loading," so the analyst never has to remember to click
+  // Sync on every platform by hand before trusting what's on screen.
+  const autoSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!statusLoaded || autoSyncedRef.current) return;
+    autoSyncedRef.current = true;
+    handleSyncAll();
+  }, [statusLoaded, handleSyncAll]);
 
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
@@ -180,6 +226,8 @@ function App() {
           range={range}
           onApplyDateAndComparison={handleApplyDateAndComparison}
           onOpenPalette={() => setPaletteOpen(true)}
+          onSyncAll={handleSyncAll}
+          syncingAll={syncingAll}
         />
 
         <main className="min-w-0 flex-1 space-y-4 px-6 py-6">
