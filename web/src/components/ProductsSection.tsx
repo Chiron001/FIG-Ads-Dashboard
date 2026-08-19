@@ -7,6 +7,8 @@ import { comparisonRange, type ComparisonMode } from "../lib/comparisonRange";
 import { computeDelta } from "../lib/delta";
 import { InfoNote } from "./InfoNote";
 import { DeltaBadge } from "./DeltaBadge";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface Props {
   platform: GrainPlatform;
@@ -150,6 +152,39 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
 
   const platformCampaigns = campaigns; // caller already scopes this to the current platform
 
+  // Raw numbers, not the on-screen formatted strings -- see exportTable.ts.
+  // Percent-shaped columns pre-scaled by 100 with "(%)" in the header.
+  const exportColumns: ExportColumn<EnrichedProductRow>[] = useMemo(() => {
+    const pctColumn = (key: "ctr" | "cvr" | "pctOfSpend" | "pctOfRevenue" | "acos", header: string): ExportColumn<EnrichedProductRow> => ({
+      header: `${header} (%)`,
+      accessor: (r) => (r[key] == null ? null : Number((r[key]! * 100).toFixed(2))),
+    });
+    const cols: ExportColumn<EnrichedProductRow>[] = [
+      { header: groupBy === "sku" ? "Product" : groupBy === "type_l2" ? "Sub-category" : "Category", accessor: (r) => r.label },
+    ];
+    if (groupBy !== "sku") cols.push({ header: "SKUs", accessor: (r) => r.skuCount });
+    cols.push(
+      { header: "Spend", accessor: (r) => r.spend },
+      pctColumn("pctOfSpend", "% Spend"),
+      { header: "Impr.", accessor: (r) => r.impressions },
+      { header: "Clicks", accessor: (r) => r.clicks },
+      pctColumn("ctr", "CTR"),
+      pctColumn("cvr", "CVR"),
+      { header: "CPA", accessor: (r) => r.cpa },
+      { header: "Orders", accessor: (r) => r.conversions },
+      { header: "AOV", accessor: (r) => r.aov },
+      { header: "Revenue", accessor: (r) => r.revenue },
+      pctColumn("pctOfRevenue", "% Rev"),
+      { header: "ROAS", accessor: (r) => r.roas },
+      pctColumn("acos", "ACOS"),
+      { header: "Profit", accessor: (r) => r.profit }
+    );
+    if (groupBy === "sku") {
+      cols.push({ header: "Website Revenue", accessor: (r) => r.websiteRevenue }, { header: "Website ROAS", accessor: (r) => r.websiteRoas });
+    }
+    return cols;
+  }, [groupBy]);
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
@@ -189,6 +224,7 @@ export function ProductsSection({ platform, range, grossMargin, campaigns, refre
             />
             Hide zero-spend
           </label>
+          <ExportMenu filename="products" title="Products" columns={exportColumns} rows={enriched} />
         </div>
       </div>
 

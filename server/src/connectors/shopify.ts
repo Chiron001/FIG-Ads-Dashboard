@@ -153,6 +153,71 @@ interface OrdersQueryResult {
   orders: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; edges: { node: ShopifyRawOrder }[] };
 }
 
+// --- URL redirects (handle-rename tracking for session attribution) --------
+
+const REDIRECTS_QUERY = `
+  query Redirects($cursor: String) {
+    urlRedirects(first: 250, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      edges { node { path target } }
+    }
+  }
+`;
+
+interface RedirectsQueryResult {
+  urlRedirects: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    edges: { node: { path: string; target: string } }[];
+  };
+}
+
+/** Shopify auto-creates a redirect every time a product's handle changes
+ * (and merchants can layer more manually) -- this store has at least one
+ * product with 4 renames on record, chained. ShopifyQL's session data is
+ * keyed by whatever landing_page_path a visitor ACTUALLY hit at the time,
+ * which for a renamed product means most of its historical traffic sits
+ * under a handle no longer in the live catalog. Naively joining sessions to
+ * the live catalog by CURRENT handle (what fetchAllActiveProducts returns)
+ * silently drops all of that -- confirmed live: "Petal Bloom Table Lamp"
+ * (current handle petal-bloom-table-lamp) had 216 sessions under its
+ * current handle vs. 7,321 under its immediately-prior one alone
+ * (petal-bloom-origami-floral-table-lamp), a >30x undercount that inflated
+ * its measured Previous Month CVR to 25% against every other product's
+ * 1-5% range, and downstream made Required Traffic read as an implausibly
+ * low 280. Fetched fresh per call (not cached across ShopifyConnector
+ * instances -- callers like routes/projection.ts construct a new one per
+ * request) -- cheap, a couple of paginated pages at most. */
+async function fetchHandleRedirectMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let cursor: string | null = null;
+  do {
+    const data: RedirectsQueryResult = await shopifyGraphQL<RedirectsQueryResult>(REDIRECTS_QUERY, { cursor });
+    for (const edge of data.urlRedirects.edges) {
+      const from = extractProductHandle(edge.node.path);
+      const to = extractProductHandle(edge.node.target);
+      if (from && to && from !== to) map.set(from, to);
+    }
+    cursor = data.urlRedirects.pageInfo.hasNextPage ? data.urlRedirects.pageInfo.endCursor : null;
+  } while (cursor);
+  return map;
+}
+
+/** Follows a chain of handle renames (see fetchHandleRedirectMap) to the
+ * current live handle -- depth-capped AND cycle-guarded, not just one or
+ * the other, since a redirect loop is a real possibility in merchant-
+ * managed data and this must never hang a request. */
+function resolveCanonicalHandle(handle: string, redirects: Map<string, string>): string {
+  let current = handle;
+  const seen = new Set<string>([current]);
+  for (let i = 0; i < 20; i++) {
+    const next = redirects.get(current);
+    if (!next || seen.has(next)) return current;
+    seen.add(next);
+    current = next;
+  }
+  return current;
+}
+
 // --- sessions (Shopify Analytics, via ShopifyQL) ----------------------------
 //
 // Not part of the Orders/Products Admin API at all -- session/traffic data
@@ -341,15 +406,19 @@ export class ShopifyConnector {
    * multiple raw paths (direct + via a collection) can point at the same
    * product. */
   async fetchProductSessions(from: string, to: string): Promise<Map<string, number>> {
-    const rows = await shopifyQL(
-      `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' ` +
-        `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
-    );
+    const [rows, redirects] = await Promise.all([
+      shopifyQL(
+        `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' ` +
+          `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+      ),
+      fetchHandleRedirectMap(),
+    ]);
 
     const byHandle = new Map<string, number>();
     for (const row of rows) {
-      const handle = extractProductHandle(row.landing_page_path ?? "");
-      if (!handle) continue;
+      const rawHandle = extractProductHandle(row.landing_page_path ?? "");
+      if (!rawHandle) continue;
+      const handle = resolveCanonicalHandle(rawHandle, redirects);
       byHandle.set(handle, (byHandle.get(handle) ?? 0) + Number(row.sessions ?? 0));
     }
     return byHandle;
@@ -375,17 +444,18 @@ export class ShopifyConnector {
    * row count bounded by the product catalog rather than the utm_source
    * long tail -- see the WHERE-fragment comment above. */
   async fetchProductSessionsByPlatform(from: string, to: string): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
-    const buildMap = (rows: Record<string, string>[]) => {
+    const buildMap = (rows: Record<string, string>[], redirects: Map<string, string>) => {
       const byHandle = new Map<string, number>();
       for (const row of rows) {
-        const handle = extractProductHandle(row.landing_page_path ?? "");
-        if (!handle) continue;
+        const rawHandle = extractProductHandle(row.landing_page_path ?? "");
+        if (!rawHandle) continue;
+        const handle = resolveCanonicalHandle(rawHandle, redirects);
         byHandle.set(handle, (byHandle.get(handle) ?? 0) + Number(row.sessions ?? 0));
       }
       return byHandle;
     };
 
-    const [googleRows, metaRows] = await Promise.all([
+    const [googleRows, metaRows, redirects] = await Promise.all([
       shopifyQL(
         `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' AND ${GOOGLE_UTM_WHERE} ` +
           `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
@@ -394,9 +464,10 @@ export class ShopifyConnector {
         `FROM sessions SHOW sessions, landing_page_path WHERE landing_page_path CONTAINS '/products/' AND ${META_UTM_WHERE} ` +
           `GROUP BY landing_page_path SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
       ),
+      fetchHandleRedirectMap(),
     ]);
 
-    return { google: buildMap(googleRows), meta: buildMap(metaRows) };
+    return { google: buildMap(googleRows, redirects), meta: buildMap(metaRows, redirects) };
   }
 
   /** Per-product ATC (sessions that added it to cart) + bounce rate, keyed
@@ -408,16 +479,20 @@ export class ShopifyConnector {
    * sessions-weighted average here, never a flat mean of two rates). Same
    * 1000-row cap and /products/-path filter as fetchProductSessions. */
   async fetchProductEngagement(from: string, to: string): Promise<Map<string, { atc: number; bounceRate: number | null }>> {
-    const rows = await shopifyQL(
-      `FROM sessions SHOW sessions, sessions_with_cart_additions, bounce_rate, landing_page_path ` +
-        `WHERE landing_page_path CONTAINS '/products/' GROUP BY landing_page_path ` +
-        `SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
-    );
+    const [rows, redirects] = await Promise.all([
+      shopifyQL(
+        `FROM sessions SHOW sessions, sessions_with_cart_additions, bounce_rate, landing_page_path ` +
+          `WHERE landing_page_path CONTAINS '/products/' GROUP BY landing_page_path ` +
+          `SINCE ${from} UNTIL ${to} ORDER BY sessions DESC LIMIT 1000`
+      ),
+      fetchHandleRedirectMap(),
+    ]);
 
     const byHandle = new Map<string, { sessions: number; atc: number; bounceRateWeightedSum: number }>();
     for (const row of rows) {
-      const handle = extractProductHandle(row.landing_page_path ?? "");
-      if (!handle) continue;
+      const rawHandle = extractProductHandle(row.landing_page_path ?? "");
+      if (!rawHandle) continue;
+      const handle = resolveCanonicalHandle(rawHandle, redirects);
       const sessions = Number(row.sessions ?? 0);
       const atc = Number(row.sessions_with_cart_additions ?? 0);
       const bounceRate = Number(row.bounce_rate ?? 0);

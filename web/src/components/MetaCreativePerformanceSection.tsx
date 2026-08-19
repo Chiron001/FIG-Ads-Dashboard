@@ -6,6 +6,8 @@ import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from ".
 import { normalizeStatus } from "../lib/campaignStatus";
 import { RankedBarChart } from "./RankedBarChart";
 import { InfoNote } from "./InfoNote";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface Props {
   range: DateRange;
@@ -280,6 +282,33 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
     }
   }
 
+  // Raw numbers, not the on-screen formatted strings -- see exportTable.ts.
+  // Percent-shaped columns pre-scaled by 100 with "(%)" in the header.
+  const exportColumns: ExportColumn<CreativeGroup>[] = [
+    { header: "Creative", accessor: (c) => creativeName(c) },
+    { header: "Product", accessor: (c) => c.productTitle },
+    { header: "Status", accessor: (c) => c.statusSummary },
+    { header: "Format", accessor: (c) => c.format },
+    { header: "Angle", accessor: (c) => c.angle },
+    { header: "Style", accessor: (c) => c.style },
+    { header: "Gender", accessor: (c) => c.gender },
+    { header: "Ads", accessor: (c) => c.adCount },
+    { header: "Ad Sets", accessor: (c) => c.adSetCount },
+    { header: "Campaigns", accessor: (c) => c.campaignCount },
+    { header: "Spend", accessor: (c) => c.spend },
+    { header: "Impr.", accessor: (c) => c.impressions },
+    { header: "Clicks", accessor: (c) => c.clicks },
+    { header: "CTR (%)", accessor: (c) => (c.ctr == null ? null : Number((c.ctr * 100).toFixed(2))) },
+    { header: "CVR (%)", accessor: (c) => (c.cvr == null ? null : Number((c.cvr * 100).toFixed(2))) },
+    { header: "CPC", accessor: (c) => c.cpc },
+    { header: "CPA", accessor: (c) => c.cpa },
+    { header: "Orders", accessor: (c) => c.conversions },
+    { header: "Ads Revenue", accessor: (c) => c.adsRevenue },
+    { header: "Ads ROAS", accessor: (c) => c.adsRoas },
+    { header: "Website Revenue", accessor: (c) => c.websiteRevenue },
+    { header: "Website ROAS", accessor: (c) => c.websiteRoas },
+  ];
+
   const taggedAdCount = flatAds.filter((a) => a.tagged).length;
 
   return (
@@ -341,16 +370,19 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
             "Loading…"
           )}
         </p>
-        <input
-          type="text"
-          placeholder="Search creative, SKU, product, or ad name…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setSelectedCreative(null);
-          }}
-          className="w-64 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search creative, SKU, product, or ad name…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setSelectedCreative(null);
+            }}
+            className="w-64 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
+          />
+          <ExportMenu filename="meta-creative-performance" title="Meta Creative Performance" columns={exportColumns} rows={sorted} />
+        </div>
       </div>
 
       <div className="flex items-center gap-1.5 text-xs text-ink-muted">

@@ -5,6 +5,8 @@ import { fetchAds } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { normalizeStatus } from "../lib/campaignStatus";
 import { computeMedians, verdictFor, type Verdict } from "../lib/verdict";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface Props {
   platform: GrainPlatform;
@@ -90,6 +92,31 @@ export function AdsSection({ platform, range, grossMargin, targetRoas, campaigns
       .sort((a, b) => b.spend - a.spend);
   }, [data, hideZeroSpend, grossMargin, targetRoas, breakEvenRoas]);
 
+  // Raw numbers, not the on-screen formatted strings -- see exportTable.ts.
+  // Percent-shaped columns pre-scaled by 100 with "(%)" in the header.
+  const exportColumns: ExportColumn<EnrichedAdRow>[] = useMemo(
+    () => [
+      { header: "Ad", accessor: (r) => adLabel(r) },
+      { header: "Type", accessor: (r) => r.adType },
+      { header: "Status", accessor: (r) => normalizeStatus(r.adStatus).label },
+      { header: platform === "google" ? "Ad Group" : "Ad Set", accessor: (r) => r.adGroupName ?? r.adGroupId },
+      { header: "Verdict", accessor: (r) => r.verdict.tag },
+      { header: "Spend", accessor: (r) => r.spend },
+      { header: "% Spend (%)", accessor: (r) => (r.pctOfSpend == null ? null : Number((r.pctOfSpend * 100).toFixed(2))) },
+      { header: "Impr.", accessor: (r) => r.impressions },
+      { header: "Clicks", accessor: (r) => r.clicks },
+      { header: "CTR (%)", accessor: (r) => (r.ctr == null ? null : Number((r.ctr * 100).toFixed(2))) },
+      { header: "CVR (%)", accessor: (r) => (r.cvr == null ? null : Number((r.cvr * 100).toFixed(2))) },
+      { header: "CPC", accessor: (r) => r.cpc },
+      { header: "CPA", accessor: (r) => r.cpa },
+      { header: "Orders", accessor: (r) => r.conversions },
+      { header: "Revenue", accessor: (r) => r.revenue },
+      { header: "ROAS", accessor: (r) => r.roas },
+      { header: "Profit", accessor: (r) => r.profit },
+    ],
+    [platform]
+  );
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
@@ -115,6 +142,7 @@ export function AdsSection({ platform, range, grossMargin, targetRoas, campaigns
             />
             Hide zero-spend
           </label>
+          <ExportMenu filename="ads" title="Ads" columns={exportColumns} rows={enriched} />
         </div>
       </div>
 

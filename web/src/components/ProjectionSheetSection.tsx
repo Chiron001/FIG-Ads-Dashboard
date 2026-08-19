@@ -5,6 +5,8 @@ import { formatCurrency, formatCurrencyPrecise, formatNumber, formatNumberOneDec
 import { KpiTile } from "./KpiTile";
 import { InfoNote } from "./InfoNote";
 import { ProjectionInsightDrawer } from "./ProjectionInsightDrawer";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 const INSIGHT_META: Record<ProjectionInsightVerdict, { label: string; color: string }> = {
   on_track: { label: "On Track", color: "#4ade80" },
@@ -55,6 +57,31 @@ const DERIVED_COLUMNS: DerivedColumn[] = [
   { key: "mtdTotalSessions", label: "MTD Total Sessions", group: "sessions", format: (v) => formatNumber(v) },
   { key: "mtdMetaSessionsSharePct", label: "MTD Meta Sessions Share", group: "sessions", format: (v) => formatPercent(v, 0) },
   { key: "projectedSessionsMonthEnd", label: "Projected Sessions (Month End)", group: "projection", format: (v) => formatNumberOneDecimal(v) },
+];
+
+// Raw numbers, not the on-screen formatted strings ("₹3,14,955") -- a
+// spreadsheet consumer wants to sum/chart these, which a currency-symbol
+// string blocks. Percent-shaped fields are pre-scaled by 100 with "(%)" in
+// the header (0.72 meaning 0.72%) for the same reason a raw 0.0072 would
+// read as "0.72%" only if you already know to multiply it.
+const PERCENT_KEYS = new Set<keyof ProjectionRow>(["previousMonthCvr", "currentMonthCvr", "mtdMetaSessionsSharePct"]);
+
+const PROJECTION_EXPORT_COLUMNS: ExportColumn<ProjectionRow>[] = [
+  { header: "Product", accessor: (r) => r.title },
+  { header: "Unit Target", accessor: (r) => r.unitTarget },
+  { header: "Price", accessor: (r) => r.price },
+  ...DERIVED_COLUMNS.map((col): ExportColumn<ProjectionRow> => {
+    const isPercent = PERCENT_KEYS.has(col.key);
+    return {
+      header: isPercent ? `${col.label} (%)` : col.label,
+      accessor: (r) => {
+        const v = r[col.key] as number | null;
+        if (v == null) return null;
+        return isPercent ? Number((v * 100).toFixed(2)) : v;
+      },
+    };
+  }),
+  { header: "Insight", accessor: (r) => INSIGHT_META[r.insight.verdict].label },
 ];
 
 interface Draft {
@@ -309,6 +336,7 @@ export function ProjectionSheetSection({ connected }: Props) {
               onChange={(e) => setSearch(e.target.value)}
               className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
             />
+            <ExportMenu filename="projection-sheet" title="Shopify Projection Sheet" columns={PROJECTION_EXPORT_COLUMNS} rows={filteredSorted} />
           </div>
         </div>
 

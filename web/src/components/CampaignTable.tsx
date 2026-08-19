@@ -18,6 +18,8 @@ import type { DateRange } from "../lib/dateRanges";
 import { CampaignDetailPanel } from "./CampaignDetailPanel";
 import { CompareCampaignsPanel } from "./CompareCampaignsPanel";
 import { DeltaBadge } from "./DeltaBadge";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 // Every row here plus the client-computed columns that depend on live
 // config (gross margin, target ROAS) or on the currently-visible row set
@@ -293,6 +295,37 @@ const COLUMNS: Column[] = [
   },
 ];
 
+// sortValue already resolves each column to the same raw number/string
+// compareValues() sorts on -- reused as the export accessor too, so
+// numeric columns export as real numbers rather than the render()
+// column's formatted JSX. Always every column regardless of the current
+// Decision/Detailed tier -- an export is a one-off artifact, not a view
+// someone's about to keep scrolling, so there's no reason to hide anything
+// tighter than what's genuinely N/A. Percent-shaped columns pre-scaled by
+// 100 with "(%)" in the header -- see exportTable.ts.
+const PERCENT_COLUMN_KEYS = new Set([
+  "pctOfSpend",
+  "ctr",
+  "cvr",
+  "pctOfRevenue",
+  "acos",
+  "searchImpressionShare",
+  "searchBudgetLostImpressionShare",
+  "roasDeltaWoW",
+]);
+
+const EXPORT_COLUMNS: ExportColumn<EnrichedRow>[] = COLUMNS.map((col) => {
+  const isPercent = PERCENT_COLUMN_KEYS.has(col.key);
+  return {
+    header: isPercent ? `${col.label} (%)` : col.label,
+    accessor: (r) => {
+      const v = col.sortValue(r);
+      if (v == null || typeof v === "string") return v;
+      return isPercent ? Number((v * 100).toFixed(2)) : v;
+    },
+  };
+});
+
 // Columns with no meaningful total/weighted-average -- rendered as "—" in
 // the summary row rather than reusing per-row formatting on data that
 // wouldn't mean what it looks like it means (a naive average of per-
@@ -493,6 +526,7 @@ export function CampaignTable({ campaigns, grossMargin, targetRoas, platform, ra
             onChange={(e) => setSearch(e.target.value)}
             className="w-48 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
           />
+          <ExportMenu filename="campaigns" title="Campaigns" columns={EXPORT_COLUMNS} rows={sorted} />
         </div>
       </div>
 

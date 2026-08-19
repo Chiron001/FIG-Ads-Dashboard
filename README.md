@@ -1073,6 +1073,57 @@ Build proceeds phase by phase per the project spec, committing after each.
       Amazon/Myntra); the button correctly disables on click and re-enables
       once every platform's real API sync round-trip finishes (can take
       30-60s+, that's the platforms' own APIs, not this).
+- [x] **Fixed a real bug: Projection Sheet's Required Traffic/Previous
+      Month CVR were badly wrong for any recently-renamed product**
+      (2026-08-19). Flagged from a screenshot: "Petal Bloom Table Lamp"
+      showed Required Traffic 280 and Previous Month CVR 25% against every
+      other product's 1-5% range. Traced to the actual root cause, not a
+      symptom -- confirmed live against the real Shopify account that the
+      product's URL handle had been renamed 4 times (Shopify auto-creates a
+      redirect on every rename, chainable), and ShopifyQL's session data is
+      keyed by whatever `landing_page_path` a visitor actually hit, which
+      for a renamed product means most of its historical traffic sits under
+      a handle no longer in the live catalog. Joining sessions to the live
+      catalog by current handle (what every consumer did) silently dropped
+      7,321 of the product's 7,537 real July sessions, undercounting the
+      CVR denominator >30x. Not a "exclude draft products" issue as
+      suspected -- `fetchAllActiveProducts()` already filters to
+      `status:active` and this product genuinely is active; the bug was in
+      session attribution, not product eligibility. Fixed generically in
+      `server/src/connectors/shopify.ts`: a new `fetchHandleRedirectMap()`
+      fetches the store's `urlRedirects`, and every session-keyed-by-handle
+      method (`fetchProductSessions`, `fetchProductSessionsByPlatform`,
+      `fetchProductEngagement`) now resolves each landing page's handle
+      through the full redirect chain before aggregating -- fixes this for
+      every current and future renamed product, not just this one specific
+      SKU, and every consumer (Projection Sheet, Shopify product table)
+      automatically. Verified live: Required Traffic corrected to 9,776.67,
+      Previous Month CVR to 0.72% (both now in line with peer products).
+- [x] **Export to CSV/Excel/PDF on every major table** (2026-08-19). One
+      reusable `<ExportMenu>` (`web/src/components/ExportMenu.tsx`) +
+      `web/src/lib/exportTable.ts`, wired into all 8 big tables (Campaigns,
+      Ads, Products, Shopify Products, Projection Sheet, Meta SKU
+      Attribution, Meta Creative Performance, Shopify Product Quadrants).
+      Exports the raw underlying numbers, not the on-screen formatted
+      strings (a spreadsheet consumer wants to sum/chart `314955`, not
+      parse `"₹3,14,955"`) -- percent-shaped columns are pre-scaled ×100
+      with "(%)" in the header for the same reason. CSV is a plain Blob
+      download (UTF-8 BOM so Excel doesn't mis-guess the encoding on
+      non-ASCII product names). "Excel" is deliberately NOT the `xlsx`
+      npm package -- it has an unpatched high-severity prototype-pollution/
+      ReDoS advisory as of this writing, not worth pulling in for what's a
+      nice-to-have; instead it's the classic dependency-free trick of an
+      HTML `<table>` served with a `.xls` extension and `application/
+      vnd.ms-excel` MIME type, which Excel opens as a real worksheet. PDF
+      uses `jspdf` + `jspdf-autotable` (landscape, since these tables run
+      10-20+ columns wide) -- dynamically imported inside `exportToPdf()`,
+      not a static top-level import, since jsPDF's own dependency chain
+      (html2canvas, dompurify) adds ~430KB minified that every page load
+      would otherwise pay for regardless of whether anyone ever exports a
+      PDF; confirmed via build output that this keeps the main bundle at
+      its pre-export size and lands jsPDF in its own lazily-fetched chunk
+      instead. Verified live: all three formats download real data from
+      three different tables (9 files, CSV content spot-checked correct).
 
 ## Structure
 

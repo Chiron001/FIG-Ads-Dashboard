@@ -20,6 +20,8 @@ import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from ".
 import { KpiTile } from "./KpiTile";
 import { InfoNote } from "./InfoNote";
 import { RankedBarChart } from "./RankedBarChart";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface Props {
   range: DateRange;
@@ -243,6 +245,20 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
       setSortDir("desc");
     }
   }
+
+  // Raw numbers, not the on-screen formatted strings -- see exportTable.ts.
+  // CVR pre-scaled by 100 with "(%)" in the header.
+  const productExportColumns: ExportColumn<ProductQuadrantRow>[] = [
+    { header: "Product", accessor: (r) => r.title ?? r.productId },
+    { header: "Quadrant", accessor: (r) => r.quadrant },
+    { header: "Ad Spend", accessor: (r) => r.adSpend },
+    { header: "Impressions", accessor: (r) => r.adImpressions },
+    { header: "Revenue", accessor: (r) => r.revenue },
+    { header: "Gross Profit", accessor: (r) => r.grossProfit },
+    { header: "POAS", accessor: (r) => r.poas },
+    { header: "ROAS", accessor: (r) => r.roas },
+    { header: "CVR (%)", accessor: (r) => (r.cvr == null ? null : Number((r.cvr * 100).toFixed(2))) },
+  ];
 
   if (!connected) {
     return (
@@ -632,6 +648,7 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
               onChange={(e) => setSearch(e.target.value)}
               className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
             />
+            <ExportMenu filename="product-quadrants" title="Shopify Product Quadrants" columns={productExportColumns} rows={sortedTable} />
           </div>
         </div>
 

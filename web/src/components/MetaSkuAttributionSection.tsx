@@ -7,6 +7,8 @@ import { normalizeStatus } from "../lib/campaignStatus";
 import { RankedBarChart } from "./RankedBarChart";
 import { KpiTile } from "./KpiTile";
 import { InfoNote } from "./InfoNote";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface Props {
   range: DateRange;
@@ -427,6 +429,23 @@ export function MetaSkuAttributionSection({ range, refreshKey, targetRoas }: Pro
 
   const columns = COLUMNS.filter((c) => c.levels.includes(level));
 
+  // sortValue already resolves each column to the same raw number/string
+  // compareValues() sorts on -- reused as the export accessor, same as
+  // CampaignTable. Only the columns visible at the current level (campaign/
+  // ad set/ad/SKU), matching what's actually on screen. Percent-shaped
+  // columns pre-scaled by 100 with "(%)" in the header.
+  const exportColumns: ExportColumn<AnyRow>[] = columns.map((col) => {
+    const isPercent = col.key === "ctr" || col.key === "cvr";
+    return {
+      header: isPercent ? `${col.label} (%)` : col.label,
+      accessor: (r) => {
+        const v = col.sortValue(r);
+        if (v == null || typeof v === "string") return v;
+        return isPercent ? Number((v * 100).toFixed(2)) : v;
+      },
+    };
+  });
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-border bg-surface-1 p-4">
@@ -515,6 +534,7 @@ export function MetaSkuAttributionSection({ range, refreshKey, targetRoas }: Pro
             onChange={(e) => setSearch(e.target.value)}
             className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
           />
+          <ExportMenu filename={`meta-sku-attribution-${level}`} title="Meta SKU Attribution" columns={exportColumns} rows={sorted} />
         </div>
       </div>
 

@@ -5,6 +5,8 @@ import { computeDelta } from "../lib/delta";
 import { computeProductInsight, INSIGHT_META } from "../lib/productInsight";
 import { InfoNote } from "./InfoNote";
 import { ProductPerformanceDrawer } from "./ProductPerformanceDrawer";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportColumn } from "../lib/exportTable";
 
 interface TextColumn {
   key: "title" | "sku" | "productType";
@@ -119,6 +121,37 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
     }
   }
 
+  // Raw numbers, not the on-screen formatted strings -- see exportTable.ts.
+  // Percent-shaped columns (cvr, bounceRate) are pre-scaled by 100 with
+  // "(%)" in the header for the same reason. Performance recomputed the
+  // same way the on-screen badge is (row vs. its immediately-adjacent
+  // previous period), independent of comparisonProducts/"Compare to".
+  const exportColumns: ExportColumn<ShopifyProductRow>[] = useMemo(() => {
+    const percentKeys = new Set<keyof ShopifyProductRow>(["cvr", "bounceRate"]);
+    return [
+      ...TEXT_COLUMNS.map((col): ExportColumn<ShopifyProductRow> => ({ header: col.label, accessor: (r) => col.format(r) })),
+      ...NUMERIC_COLUMNS.map((col): ExportColumn<ShopifyProductRow> => {
+        const isPercent = percentKeys.has(col.key);
+        return {
+          header: isPercent ? `${col.label} (%)` : col.label,
+          accessor: (r) => {
+            const v = r[col.key] as number | null;
+            if (v == null) return null;
+            return isPercent ? Number((v * 100).toFixed(2)) : v;
+          },
+        };
+      }),
+      {
+        header: "Performance",
+        accessor: (r) => {
+          if (!previousPeriodByProductId) return null;
+          const insight = computeProductInsight(r, previousPeriodByProductId.get(r.productId) ?? null);
+          return INSIGHT_META[insight.verdict].label;
+        },
+      },
+    ];
+  }, [previousPeriodByProductId]);
+
   const performanceProduct = performanceProductId ? products.find((p) => p.productId === performanceProductId) : null;
 
   return (
@@ -145,13 +178,16 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
             </span>
           )}
         </div>
-        <input
-          type="text"
-          placeholder="Search products or SKU…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Search products or SKU…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-56 rounded-md border border-border bg-surface-0 px-3 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted"
+          />
+          <ExportMenu filename="shopify-products" title="Shopify Products" columns={exportColumns} rows={sorted} />
+        </div>
       </div>
 
       {sorted.length === 0 ? (
