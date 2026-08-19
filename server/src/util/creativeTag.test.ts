@@ -15,12 +15,26 @@ test("parseCreativeTag: no ad name -> empty tag", () => {
   });
 });
 
-test("parseCreativeTag: no '$...$' wrapper at all -> empty tag (today's real ad names)", () => {
-  // Live example, verbatim, pre-rollout -- confirmed zero ad names carry
-  // "$" today. Must not accidentally parse via the bare nomenclature.
+test("parseCreativeTag: no '$...$' wrapper at all -> empty tag, even though the bare text looks tag-shaped", () => {
+  // Live example, verbatim -- some ads still use the pre-rollout bare
+  // nomenclature with no "$" wrapper at all. Must not accidentally parse it
+  // just because it superficially resembles the tag grammar.
   const tag = parseCreativeTag("❌FIG-05-007-RD_VID_Lif_Unbox_F_v1 - [Wavy Floor Lamp] - 12/08/2026_W33 [ Music Change]");
   assert.equal(tag.sku, null);
   assert.equal(tag.raw, null);
+});
+
+test("parseCreativeTag: real rollout shape -- bare $SKU$ only, no format/angle/style/gender/version at all", () => {
+  // Confirmed live 2026-08-19: this is what's actually shipping today, not
+  // the full SKU_FORMAT_..._vN sequence the written spec describes.
+  const tag = parseCreativeTag("Video - Wavy Lamp - Wavy Edit New [Wavy Floor Lamp] $FIG-05-007$");
+  assert.equal(tag.sku, "FIG-05-007");
+  assert.equal(tag.format, null);
+  assert.equal(tag.angle, null);
+  assert.equal(tag.style, null);
+  assert.equal(tag.gender, null);
+  assert.equal(tag.version, null);
+  assert.equal(isTaggedCreative(tag), true);
 });
 
 test("parseCreativeTag: full tag, every field present", () => {
@@ -152,8 +166,8 @@ test("parseCreativeTag: whitespace-only wrapper -> raw empty string after trim, 
   assert.equal(tag.format, null);
 });
 
-test("isTaggedCreative: requires both sku and format", () => {
-  assert.equal(isTaggedCreative({ sku: "FIG-1", format: null, angle: null, style: null, gender: null, version: null, variant: null, raw: "x" }), false);
+test("isTaggedCreative: requires only sku, not format -- real rollout ships bare $SKU$ with no format token", () => {
+  assert.equal(isTaggedCreative({ sku: "FIG-1", format: null, angle: null, style: null, gender: null, version: null, variant: null, raw: "x" }), true);
   assert.equal(isTaggedCreative({ sku: null, format: "VID", angle: null, style: null, gender: null, version: null, variant: null, raw: "x" }), false);
   assert.equal(isTaggedCreative({ sku: "FIG-1", format: "VID", angle: null, style: null, gender: null, version: null, variant: null, raw: "x" }), true);
 });

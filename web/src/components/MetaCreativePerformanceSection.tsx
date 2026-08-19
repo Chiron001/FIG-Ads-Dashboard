@@ -81,8 +81,17 @@ interface FlatAd extends MetaCreativeAdRow {
 function groupByCreative(ads: FlatAd[], productTitleForSku: (sku: string) => string | null): CreativeGroup[] {
   const groups = new Map<string, FlatAd[]>();
   for (const ad of ads) {
-    if (!ad.tagged || !ad.sku) continue; // an ungrouped ad has no creative identity to group by
-    const key = [ad.sku, ad.format, ad.angle, ad.style, ad.gender, ad.version, ad.variant].join("|");
+    if (!ad.sku) continue; // no SKU inside "$...$" -- no creative identity to group by at all
+    const hasStructuredTag = ad.format != null || ad.angle != null || ad.style != null || ad.gender != null || ad.version != null || ad.variant != null;
+    // The real rollout ships bare "$SKU$" with none of the format/angle/
+    // style/etc. fields (confirmed live 2026-08-19) -- grouping purely by
+    // those fields would then collapse every different ad/creative sharing
+    // one SKU into a single indistinguishable row. Fall back to the ad's
+    // own id so each stays its own row (and its own name, see
+    // creativeName() below) until those fields actually start appearing;
+    // once they do, ads that share the full tag correctly consolidate as
+    // before.
+    const key = hasStructuredTag ? [ad.sku, ad.format, ad.angle, ad.style, ad.gender, ad.version, ad.variant].join("|") : `${ad.sku}|ad:${ad.adId}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(ad);
   }
@@ -171,9 +180,15 @@ function computeTotals(rows: CreativeGroup[]): Totals {
 }
 
 function creativeName(g: CreativeGroup): string {
-  return [g.sku, g.format, g.angle, g.style, g.gender, g.version != null ? `v${g.version}` : null, g.variant != null ? `n${g.variant}` : null]
-    .filter(Boolean)
-    .join("_");
+  const tagParts = [g.format, g.angle, g.style, g.gender, g.version != null ? `v${g.version}` : null, g.variant != null ? `n${g.variant}` : null].filter(
+    Boolean
+  );
+  // No format/angle/etc. beyond the bare SKU (today's real rollout shape) --
+  // the reconstructed "SKU" alone would be identical for every different
+  // creative sharing that SKU, so show the actual ad name instead, which is
+  // still distinct per creative even without the structured fields.
+  if (tagParts.length === 0) return g.adNames[0] ?? g.sku;
+  return [g.sku, ...tagParts].join("_");
 }
 
 function compareValues(av: number | string | null, bv: number | string | null, dir: "asc" | "desc"): number {
@@ -274,9 +289,10 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
           <div className="flex items-center gap-1.5">
             <h3 className="font-display text-base text-ink-primary">Top creatives</h3>
             <InfoNote label="How this chart works">
-              Every ad sharing the exact same parsed tag (SKU + format + angle + style + gender + version + variant)
-              is one creative here, combined across however many ads/campaigns it's placed in. Rank by spend or
-              either ROAS; click a bar to filter the table below to that creative.
+              Every ad whose name carries a "$...$" tag with a SKU inside is a creative here. Ads that also share the
+              same format/angle/style/gender/version tag are combined into one row; ads tagged with just the bare
+              SKU (today's real rollout shape) stay one row each, named after the ad itself. Rank by spend or either
+              ROAS; click a bar to filter the table below to that creative.
             </InfoNote>
           </div>
           <div className="flex items-center gap-1 rounded-md border border-border p-0.5 text-xs">
@@ -310,7 +326,7 @@ export function MetaCreativePerformanceSection({ range, refreshKey, targetRoas }
             const c = creatives.find((x) => x.creativeKey === key);
             setSearch((cur) => (selectedCreative === key ? "" : (c ? c.sku : cur)));
           }}
-          emptyMessage="No tagged creatives yet -- this fills in once ad names start wrapping the tag in &quot;$...$&quot;"
+          emptyMessage="No creatives yet -- this fills in once an ad name wraps a SKU in &quot;$...$&quot;, e.g. &quot;...[Product] $FIG-05-007$&quot;"
         />
       </div>
 

@@ -581,9 +581,11 @@ export interface MetaCreativeAdRow extends MetaCreativePerformance {
   gender: CreativeGender | null;
   version: number | null;
   variant: number | null;
-  /** True once sku+format are both parsed -- see isTaggedCreative in
-   * server/src/util/creativeTag.ts. The other fields can still be null on a
-   * "tagged" row (they're optional in the naming convention). */
+  /** True once the SKU inside "$...$" parsed -- see isTaggedCreative in
+   * server/src/util/creativeTag.ts. format/angle/style/gender/version/
+   * variant are all optional and commonly null even on a "tagged" row --
+   * the real rollout ships a bare "$SKU$" with none of them (confirmed
+   * live 2026-08-19). */
   tagged: boolean;
 }
 

@@ -1,11 +1,17 @@
 // Meta creative-performance naming convention (user-specified):
 //   $[SKU]_[IMG/VID/CRSL/GIF/UGC]_[Aesth/Price/Gift/Occ/Qlty/Featr/Lif/Exp]_
 //    [POV/Demo/BeforeAfter/Testi/Unbox]_[M/F/NA]_v(n)_n(n)$
-// wrapped in a pair of literal "$" inside the ad's name. Per the user
-// (2026-08-16): none of the ~200 live Meta ad names carry the "$...$"
-// wrapper yet -- that's an upcoming rename on their end, not a bug here --
-// so today this parses to "no creative tag" for every ad until they roll it
-// out; the rule itself is what's being built ahead of that rollout.
+// wrapped in a pair of literal "$" inside the ad's name. As of 2026-08-16
+// none of the live ad names carried the wrapper yet; confirmed live on
+// 2026-08-19 that the rollout has since started, but what's actually
+// shipping is just the SKU alone (e.g. "...[Wavy Floor Lamp] $FIG-05-007$"),
+// not the full SKU_FORMAT_ANGLE_STYLE_GENDER_vN_nN sequence -- the
+// descriptive words (Video/Image/UGC/etc.) are still free text OUTSIDE the
+// wrapper today. The parser below already tolerates that (every field past
+// SKU is optional); isTaggedCreative() only requires the SKU specifically,
+// not the full sequence, so real ads attribute correctly against this
+// partial rollout instead of everything reading as untagged until the rest
+// of the fields show up.
 
 export type CreativeFormat = "IMG" | "VID" | "CRSL" | "GIF" | "UGC";
 export type CreativeAngle = "Aesth" | "Price" | "Gift" | "Occ" | "Qlty" | "Featr" | "Lif" | "Exp";
@@ -157,10 +163,15 @@ export function parseCreativeTag(adName: string | null): ParsedCreativeTag {
   return { sku, format, angle, style, gender, version, variant, raw };
 }
 
-/** True once enough of the tag parsed to call this a real creative
- * (SKU + format, the two fields every example in the spec always carries) --
- * distinguishes "tagged but a field or two is missing" from "no tag at all",
- * which is what response-level counts (matchedAds/taggedAds) key off. */
+/** True once there's enough of the tag to attribute this ad to a product --
+ * the SKU alone, not the full field sequence. Originally required
+ * SKU + format (the two fields the written spec always carries), but real
+ * ad names only carry the bare SKU today (confirmed live 2026-08-19) --
+ * requiring format too made every real ad read as "no tag at all" despite
+ * the SKU parsing out correctly. Format/angle/style/etc. are still parsed
+ * and used to distinguish creatives when present (see
+ * MetaCreativePerformanceSection.tsx's groupByCreative), just not required
+ * for the "is this ad attributable" question this answers. */
 export function isTaggedCreative(tag: ParsedCreativeTag): boolean {
-  return tag.sku != null && tag.format != null;
+  return tag.sku != null;
 }

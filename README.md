@@ -1031,6 +1031,29 @@ Build proceeds phase by phase per the project spec, committing after each.
         change there) and are overridden to navy + light-on-navy text in
         `:root[data-theme="light"]`; `PlatformSidebar.tsx` now references
         these instead of the app-wide `surface-*`/`ink-*` tokens directly.
+- [x] **Fixed Meta Creative Performance: 0 tagged creatives despite the
+      "$...$" rollout actually being live** (2026-08-19). `isTaggedCreative`
+      required both SKU *and* format inside the "$...$" wrapper -- but
+      confirmed live against the real account that the rollout that's
+      actually shipping is a bare `$FIG-05-007$` (SKU alone, nothing else),
+      not the full `$SKU_FORMAT_ANGLE_STYLE_GENDER_vN_nN$` sequence the
+      written spec describes; the descriptive words (Video/Image/UGC) are
+      still free text outside the wrapper. Every one of the ~50 already-
+      tagged ads was therefore reading as untagged. Fixed by requiring only
+      the SKU (`server/src/util/creativeTag.ts`) -- SKU Attribution was
+      unaffected (it never depended on `tagged`, just a bare "FIG-..." token
+      anywhere in the ad name). Also fixed a second-order issue the relaxed
+      check would otherwise have caused: grouping creatives purely by
+      SKU+format+angle+... would have collapsed every different ad sharing
+      one bare SKU into a single indistinguishable row once format is
+      always null. `MetaCreativePerformanceSection.tsx`'s `groupByCreative`
+      now falls back to one row per ad (keyed and named by the ad itself)
+      whenever no structured fields are present, and only consolidates by
+      the full tag once an ad actually carries one (confirmed live: one ad
+      already does -- `$FIG-02-008_UGC_Unbox_F_v1$` -- and correctly shows
+      its Format/Style/Gender columns while the SKU-only ads around it
+      correctly show N/A). Verified against the real account: 44 distinct
+      creatives from 44 tagged ads for Last 7 Days (was 0 before the fix).
 
 ## Structure
 
