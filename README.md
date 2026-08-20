@@ -1223,6 +1223,20 @@ Build proceeds phase by phase per the project spec, committing after each.
       invalid -> friendly error) is verified live via Playwright in both
       themes; the golden path (a real answer) is code-reviewed but unverified
       pending a real `ANTHROPIC_API_KEY`.
+- [x] **Sidebar sub-nav now collapses behind a chevron** (2026-08-20), on
+      explicit request. Meta/Google/Shopify's sub-items (SKU Attribution,
+      Creative Performance, Product Quadrants, Projection Sheet) used to
+      always render open under their parent, and were prefixed with a literal
+      "↳" character. Both replaced: sub-items now start hidden and only
+      appear once their group's dedicated chevron toggle is clicked (a
+      separate control from the parent row, which still just navigates on
+      click) -- revealed via a connector rail (a thin left border, standard
+      tree-disclosure styling) instead of the arrow glyph. A group whose
+      sub-item is the current page auto-expands even without a click, so
+      navigating in from the command palette never leaves the active page
+      hidden with no visible indication of where you are. Collapsed
+      (icon-only) sidebar mode is unaffected -- its sub-items were already
+      compact icon buttons, always visible regardless. `PlatformSidebar.tsx`.
 
 ## Structure
 

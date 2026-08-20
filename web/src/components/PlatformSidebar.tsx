@@ -53,6 +53,26 @@ function HomeIcon({ size }: { size: number }) {
   );
 }
 
+/** Disclosure chevron for a group with sub-items -- rotates to point down
+ * when expanded. Replaces the old "↳" hook-arrow prefix on sub-item labels
+ * entirely: that glyph read as ASCII-art, not a real UI affordance (nothing
+ * to click, no expand/collapse state). This is the standard tree-disclosure
+ * pattern instead -- a dedicated toggle control, sub-items hidden until the
+ * group is opened, indicated by rotation + the connector rail below. */
+function ChevronIcon({ size, expanded }: { size: number; expanded: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`shrink-0 transition-transform duration-[var(--duration-micro)] ${expanded ? "rotate-90" : ""}`}
+    >
+      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TagIcon({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
@@ -128,8 +148,39 @@ function MoonIcon({ size }: { size: number }) {
 
 // No localStorage per spec (React state only) -- collapse state is a
 // per-session UI preference, not data, so resetting on reload is fine.
+// Which nav groups have sub-items at all -- Amazon/Myntra don't, so they
+// never get a chevron.
+type SubNavGroup = "meta" | "google" | "shopify";
+
 export function PlatformSidebar({ active, onChange, connected, shopifyConnected, mobileOpen, onMobileClose, theme, onThemeChange }: Props) {
   const [collapsed, setCollapsed] = useState(false);
+  // Sub-items start collapsed (hidden) and only appear once their group is
+  // opened -- previously every group's sub-items were always visible,
+  // which crowded the nav. Toggled by the chevron, independent of the
+  // group's own row (clicking the row still just navigates to that
+  // platform's main page).
+  const [expandedGroups, setExpandedGroups] = useState<Set<SubNavGroup>>(new Set());
+
+  function toggleGroup(group: SubNavGroup) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }
+
+  // A group whose sub-item is the CURRENT page auto-opens even if the user
+  // never clicked its chevron -- e.g. arriving at "Google Ads — SKU
+  // Attribution" via the command palette should still reveal it highlighted
+  // in the tree, not leave it hidden with no visible indication of where
+  // you are.
+  const isGroupExpanded = (group: SubNavGroup): boolean => {
+    if (expandedGroups.has(group)) return true;
+    if (group === "meta") return active === "meta-sku-attribution" || active === "meta-creative-performance";
+    if (group === "google") return active === "google-sku-attribution";
+    return active === "shopify-product-quadrants" || active === "shopify-projection-sheet";
+  };
 
   // Picking a destination on mobile should also close the drawer -- it's
   // an overlay there, not part of the static layout.
@@ -198,36 +249,57 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
           {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Platforms</div>}
           {ALL_PLATFORMS.map((platform) => {
             const isActive = platform === active;
+            const group: SubNavGroup | null = platform === "meta" ? "meta" : platform === "google" ? "google" : null;
+            const expanded = group ? isGroupExpanded(group) : false;
             return (
               <div key={platform}>
-                <button
-                  type="button"
-                  title={collapsed ? `${PLATFORM_LABELS[platform]}${connected[platform] ? "" : " (not connected)"}` : undefined}
-                  onClick={() => handleChange(platform)}
-                  className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
-                    collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-                  } ${isActive ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
-                >
-                  {isActive && (
-                    <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] }} />
+                <div className={`flex items-center ${collapsed ? "" : "gap-0.5"}`}>
+                  <button
+                    type="button"
+                    title={collapsed ? `${PLATFORM_LABELS[platform]}${connected[platform] ? "" : " (not connected)"}` : undefined}
+                    onClick={() => handleChange(platform)}
+                    className={`relative flex flex-1 items-center rounded-md text-left text-sm font-medium transition-colors ${
+                      collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+                    } ${isActive ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
+                  >
+                    {isActive && (
+                      <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS[platform] }} />
+                    )}
+                    <span className="relative shrink-0" style={{ opacity: connected[platform] ? 1 : 0.4 }}>
+                      <PlatformIcon platform={platform} size={18} />
+                    </span>
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1 truncate">{PLATFORM_LABELS[platform]}</span>
+                        {!connected[platform] && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
+                      </>
+                    )}
+                  </button>
+                  {/* Disclosure toggle -- separate control from the row above
+                      (which still just navigates on click), so opening/
+                      closing the sub-nav never fights with going to that
+                      platform's own page. */}
+                  {group && !collapsed && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group)}
+                      aria-expanded={expanded}
+                      aria-label={expanded ? `Collapse ${PLATFORM_LABELS[platform]} sections` : `Expand ${PLATFORM_LABELS[platform]} sections`}
+                      className="shrink-0 rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                    >
+                      <ChevronIcon size={12} expanded={expanded} />
+                    </button>
                   )}
-                  <span className="relative shrink-0" style={{ opacity: connected[platform] ? 1 : 0.4 }}>
-                    <PlatformIcon platform={platform} size={18} />
-                  </span>
-                  {!collapsed && (
-                    <>
-                      <span className="flex-1 truncate">{PLATFORM_LABELS[platform]}</span>
-                      {!connected[platform] && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
-                    </>
-                  )}
-                </button>
+                </div>
 
                 {/* Meta-only sub-views: each a lens on Meta's own ad-name-
                     tagging data, not a platform of their own. Collapsed
-                    mode swaps the text row for a small icon-only button
-                    (title tooltip for identification) instead of hiding
-                    them outright -- they stayed reachable at every
-                    sidebar width, not just when expanded. */}
+                    sidebar mode swaps the text row for small icon-only
+                    buttons (title tooltip for identification), always
+                    visible there regardless of expand state -- room is
+                    already tight, so there's nothing to save by hiding them.
+                    Expanded sidebar mode instead hides them behind the
+                    chevron above, revealed via a connector rail once open. */}
                 {platform === "meta" && collapsed && (
                   <div className="mt-0.5 flex flex-col items-center gap-0.5">
                     <button
@@ -252,38 +324,31 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     </button>
                   </div>
                 )}
-                {platform === "meta" && !collapsed && (
-                  <>
+                {platform === "meta" && !collapsed && expanded && (
+                  <div className="relative ml-[19px] mt-0.5 space-y-0.5 border-l border-[var(--sidebar-border)] pl-3 animate-fade-slide-in">
                     <button
                       type="button"
                       onClick={() => handleChange("meta-sku-attribution")}
-                      className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                      className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
                         active === "meta-sku-attribution"
                           ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
                           : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
-                      {active === "meta-sku-attribution" && (
-                        <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.meta }} />
-                      )}
-                      <span className="truncate">↳ SKU Attribution</span>
+                      <span className="truncate">SKU Attribution</span>
                     </button>
-
                     <button
                       type="button"
                       onClick={() => handleChange("meta-creative-performance")}
-                      className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                      className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
                         active === "meta-creative-performance"
                           ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
                           : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
                       }`}
                     >
-                      {active === "meta-creative-performance" && (
-                        <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.meta }} />
-                      )}
-                      <span className="truncate">↳ Creative Performance</span>
+                      <span className="truncate">Creative Performance</span>
                     </button>
-                  </>
+                  </div>
                 )}
 
                 {/* Google-only sub-view: same idea as Meta's SKU Attribution
@@ -303,21 +368,20 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     </button>
                   </div>
                 )}
-                {platform === "google" && !collapsed && (
-                  <button
-                    type="button"
-                    onClick={() => handleChange("google-sku-attribution")}
-                    className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
-                      active === "google-sku-attribution"
-                        ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
-                        : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
-                    }`}
-                  >
-                    {active === "google-sku-attribution" && (
-                      <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.google }} />
-                    )}
-                    <span className="truncate">↳ SKU Attribution</span>
-                  </button>
+                {platform === "google" && !collapsed && expanded && (
+                  <div className="relative ml-[19px] mt-0.5 space-y-0.5 border-l border-[var(--sidebar-border)] pl-3 animate-fade-slide-in">
+                    <button
+                      type="button"
+                      onClick={() => handleChange("google-sku-attribution")}
+                      className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                        active === "google-sku-attribution"
+                          ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                          : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <span className="truncate">SKU Attribution</span>
+                    </button>
+                  </div>
                 )}
               </div>
             );
@@ -326,30 +390,43 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
           {/* Shopify isn't an ad platform -- ground-truth orders/products, own
               group so it doesn't read as "a 5th platform" it isn't. */}
           {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Store</div>}
-          <button
-            type="button"
-            title={collapsed ? `Shopify${shopifyConnected ? "" : " (not connected)"}` : undefined}
-            onClick={() => handleChange("shopify")}
-            className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
-              collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
-            } ${active === "shopify" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
-          >
-            {active === "shopify" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />}
-            <span className="relative shrink-0" style={{ opacity: shopifyConnected ? 1 : 0.4 }}>
-              <ShopifyIcon size={18} />
-            </span>
+          <div className={`flex items-center ${collapsed ? "" : "gap-0.5"}`}>
+            <button
+              type="button"
+              title={collapsed ? `Shopify${shopifyConnected ? "" : " (not connected)"}` : undefined}
+              onClick={() => handleChange("shopify")}
+              className={`relative flex flex-1 items-center rounded-md text-left text-sm font-medium transition-colors ${
+                collapsed ? "mt-4 justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+              } ${active === "shopify" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
+            >
+              {active === "shopify" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />}
+              <span className="relative shrink-0" style={{ opacity: shopifyConnected ? 1 : 0.4 }}>
+                <ShopifyIcon size={18} />
+              </span>
+              {!collapsed && (
+                <>
+                  <span className="flex-1 truncate">Shopify</span>
+                  {!shopifyConnected && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
+                </>
+              )}
+            </button>
             {!collapsed && (
-              <>
-                <span className="flex-1 truncate">Shopify</span>
-                {!shopifyConnected && <span className="shrink-0 text-[10px] text-[var(--sidebar-ink-muted)]">not connected</span>}
-              </>
+              <button
+                type="button"
+                onClick={() => toggleGroup("shopify")}
+                aria-expanded={isGroupExpanded("shopify")}
+                aria-label={isGroupExpanded("shopify") ? "Collapse Shopify sections" : "Expand Shopify sections"}
+                className="mt-4 shrink-0 rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+              >
+                <ChevronIcon size={12} expanded={isGroupExpanded("shopify")} />
+              </button>
             )}
-          </button>
+          </div>
 
-          {/* Shopify-only sub-view: a statistical lens on Shopify's own
-              product/order data (matched to combined ad spend), not a
-              platform of its own -- same nesting pattern as Meta's two
-              sub-views above. */}
+          {/* Shopify-only sub-views: a statistical lens on Shopify's own
+              product/order data (matched to combined ad spend), not
+              platforms of their own -- same nesting/disclosure pattern as
+              Meta's and Google's sub-views above. */}
           {collapsed ? (
             <div className="mt-0.5 flex flex-col items-center gap-0.5">
               <button
@@ -362,28 +439,6 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               >
                 <QuadrantIcon size={13} />
               </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => handleChange("shopify-product-quadrants")}
-              className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
-                active === "shopify-product-quadrants"
-                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
-                  : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
-              }`}
-            >
-              {active === "shopify-product-quadrants" && (
-                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />
-              )}
-              <span className="truncate">↳ Product Quadrants</span>
-            </button>
-          )}
-
-          {/* Monthly unit-target planning against live Shopify catalog +
-              session/CVR pace -- same nesting as Product Quadrants above. */}
-          {collapsed ? (
-            <div className="mt-0.5 flex flex-col items-center gap-0.5">
               <button
                 type="button"
                 title="Shopify — Projection Sheet"
@@ -396,20 +451,32 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => handleChange("shopify-projection-sheet")}
-              className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
-                active === "shopify-projection-sheet"
-                  ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
-                  : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
-              }`}
-            >
-              {active === "shopify-projection-sheet" && (
-                <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: SHOPIFY_COLOR }} />
-              )}
-              <span className="truncate">↳ Projection Sheet</span>
-            </button>
+            isGroupExpanded("shopify") && (
+              <div className="relative ml-[19px] mt-0.5 space-y-0.5 border-l border-[var(--sidebar-border)] pl-3 animate-fade-slide-in">
+                <button
+                  type="button"
+                  onClick={() => handleChange("shopify-product-quadrants")}
+                  className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    active === "shopify-product-quadrants"
+                      ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                      : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                  }`}
+                >
+                  <span className="truncate">Product Quadrants</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChange("shopify-projection-sheet")}
+                  className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    active === "shopify-projection-sheet"
+                      ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                      : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                  }`}
+                >
+                  <span className="truncate">Projection Sheet</span>
+                </button>
+              </div>
+            )
           )}
 
           {/* App-wide config (API integration status, COGS %, EBITDA cost
