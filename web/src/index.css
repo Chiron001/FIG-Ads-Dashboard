@@ -14,10 +14,14 @@
    apply logic, and the toggle in PlatformSidebar.tsx.
 
    Governing rule (UI/UX spec §0): glass is a material for FLOATING layers
-   only -- the top bar, dropdowns, the command palette, tooltips, the drawer.
-   Data surfaces (tables, KPI numbers, chart plot areas) stay solid so
-   figures stay crisp. Boldness is spent in exactly one place: the Spend Flow
-   band (SpendFlowBand.tsx). Everything else is quiet.
+   only -- the command palette, tooltips, the drawer. Data surfaces (tables,
+   KPI numbers, chart plot areas) stay solid so figures stay crisp. The top
+   bar and dropdowns were glass originally too, but both moved to solid on
+   explicit request (whatever was scrolled underneath -- KPI tiles, chart
+   fills, especially the amber/orange end of the palette -- read as
+   distracting bleed-through rather than an honest depth cue). Boldness is
+   spent in exactly one place: the Spend Flow band (SpendFlowBand.tsx).
+   Everything else is quiet.
 
    Token names below are kept identical to the pre-existing palette (surface-*,
    ink-*, border, grid, axis, platform-*, status-*) so the ~20 already-built,
@@ -263,9 +267,11 @@ body {
 }
 
 /* ============================================================================
-   Glass -- the exact recipe, applied only to floating layers (top bar,
-   dropdowns, the command palette, tooltips, the drawer). Never on tables,
-   KPI cards, or chart plot areas -- those use bg-surface-* (solid).
+   Glass -- the exact recipe, applied only to floating layers with a dimmed
+   backdrop behind them (the command palette, tooltips, the drawer). The top
+   bar and dropdowns used to be glass too but moved to solid -- see
+   index.css's header comment. Never on tables, KPI cards, or chart plot
+   areas -- those use bg-surface-* (solid).
    ========================================================================= */
 .glass {
   background: var(--glass-bg);

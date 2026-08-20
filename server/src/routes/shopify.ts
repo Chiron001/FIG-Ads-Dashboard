@@ -91,25 +91,55 @@ function extractSkuToken(adName: string | null): string | null {
   return match ? match[0].toUpperCase() : null;
 }
 
-/** Meta ad spend summed per SKU-tag token extracted from the ad's name --
- * the same "true" per-token spend metaSkuAttribution.ts's skuGroups uses,
- * recomputed here (not imported -- that route returns its full drill-down
- * shape, more than this needs) so this file can match it against Shopify
- * products below. */
-async function fetchSkuAttributedSpendByToken(from: string, to: string): Promise<Map<string, number>> {
+export interface TokenMetric {
+  spend: number;
+  impressions: number;
+}
+
+/** Meta ad spend/impressions summed per SKU-tag token extracted from the
+ * ad's name -- the same "true" per-token spend metaSkuAttribution.ts's
+ * skuGroups uses, recomputed here (not imported -- that route returns its
+ * full drill-down shape, more than this needs) so this file can match it
+ * against Shopify products below.
+ *
+ * Excludes any ad belonging to a campaign that ALSO has catalog-level
+ * product spend for the same range (fact_shopping_product_performance).
+ * fact_ad_creative_performance (ad-level) and fact_shopping_product_
+ * performance (catalog/product-level, breakdowns=product_id) are two
+ * different BREAKDOWNS of the same underlying campaign spend, never meant
+ * to be summed (db/migrations/0005's header) -- without this exclusion, a
+ * catalog/dynamic-product ad that happens to also carry a "FIG-..." tag in
+ * its name would be counted once here (via the name tag) and again via
+ * metaCatalogSpend (via the catalog match), double-counting real spend.
+ * Confirmed live this isn't hypothetical -- this account runs catalog
+ * campaigns whose ad names also match the SKU pattern. Campaign-level, not
+ * ad-level, because fact_shopping_product_performance has no ad_id column
+ * (it's a campaign+product-item grain) -- campaign is the finest boundary
+ * the data allows, and matches Meta's own catalog/Advantage+ ad sets being
+ * a campaign-scoped setup in practice. */
+async function fetchSkuAttributedMetricsByToken(from: string, to: string): Promise<Map<string, TokenMetric>> {
   const pool = getPool();
   const { rows } = await pool.query(
-    `select ad_id, max(ad_name) as ad_name, coalesce(sum(spend), 0)::float8 as spend
-     from fact_ad_creative_performance
-     where date between $1 and $2 and platform::text = 'meta'
-     group by ad_id`,
+    `select acp.ad_id, max(acp.ad_name) as ad_name,
+            coalesce(sum(acp.spend), 0)::float8 as spend,
+            coalesce(sum(acp.impressions), 0)::float8 as impressions
+     from fact_ad_creative_performance acp
+     where acp.date between $1 and $2 and acp.platform::text = 'meta'
+       and not exists (
+         select 1 from fact_shopping_product_performance spp
+         where spp.platform::text = 'meta'
+           and spp.campaign_id = acp.campaign_id
+           and spp.date between $1 and $2
+       )
+     group by acp.ad_id`,
     [from, to]
   );
-  const byToken = new Map<string, number>();
+  const byToken = new Map<string, TokenMetric>();
   for (const r of rows) {
     const token = extractSkuToken(r.ad_name);
     if (!token) continue;
-    byToken.set(token, (byToken.get(token) ?? 0) + r.spend);
+    const cur = byToken.get(token) ?? { spend: 0, impressions: 0 };
+    byToken.set(token, { spend: cur.spend + r.spend, impressions: cur.impressions + r.impressions });
   }
   return byToken;
 }
@@ -120,12 +150,16 @@ async function fetchSkuAttributedSpendByToken(from: string, to: string): Promise
  * EVERY matching product, same "directional, not exact" caveat already
  * shown on Meta's own SKU Attribution page for the identical reason (one
  * ad's spend counted once per SKU it's tagged for, not split). */
-function skuAttributedSpendForProduct(skus: string[], tokenSpend: Map<string, number>): number {
-  let total = 0;
-  for (const [token, spend] of tokenSpend) {
-    if (skus.some((sku) => sku.startsWith(token))) total += spend;
+function skuAttributedMetricsForProduct(skus: string[], tokenMetrics: Map<string, TokenMetric>): TokenMetric {
+  let spend = 0;
+  let impressions = 0;
+  for (const [token, metric] of tokenMetrics) {
+    if (skus.some((sku) => sku.startsWith(token))) {
+      spend += metric.spend;
+      impressions += metric.impressions;
+    }
   }
-  return total;
+  return { spend, impressions };
 }
 
 export const shopifyRouter = Router();
@@ -243,7 +277,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform, adMetrics, skuTokenSpend, engagementByHandle, cogsRate] = await Promise.all([
+    const [{ rows }, sessionsByHandle, sessionsByHandleByPlatform, adMetrics, skuTokenMetrics, engagementByHandle, cogsRate] = await Promise.all([
       pool.query(
         `select
            product_id,
@@ -265,7 +299,7 @@ shopifyRouter.get(
       fetchProductSessionsSafe(range.from, range.to),
       fetchProductSessionsByPlatformSafe(range.from, range.to),
       fetchAdMetricsByProductKeys(range.from, range.to),
-      fetchSkuAttributedSpendByToken(range.from, range.to),
+      fetchSkuAttributedMetricsByToken(range.from, range.to),
       fetchProductEngagementSafe(range.from, range.to),
       getCogsRate(),
     ]);
@@ -276,9 +310,10 @@ shopifyRouter.get(
       const metaSessions = r.product_handle ? (sessionsByHandleByPlatform.meta.get(r.product_handle) ?? null) : null;
 
       const skus: string[] = r.skus ?? [];
-      const skuAttributedSpend = skuAttributedSpendForProduct(skus, skuTokenSpend);
+      const skuAttributedSpend = skuAttributedMetricsForProduct(skus, skuTokenMetrics).spend;
       const metaCatalogSpend = r.product_handle ? (adMetrics.metaByHandle.get(r.product_handle)?.spend ?? 0) : 0;
-      const adSpend = skuAttributedSpend + metaCatalogSpend;
+      const googleSpend = r.product_id ? (adMetrics.googleByProductGid.get(r.product_id)?.spend ?? 0) : 0;
+      const adSpend = skuAttributedSpend + metaCatalogSpend + googleSpend;
       const grossProfit = r.revenue * (1 - cogsRate);
 
       const engagement = r.product_handle ? engagementByHandle.get(r.product_handle) : undefined;
@@ -299,6 +334,7 @@ shopifyRouter.get(
         metaSessions,
         skuAttributedSpend,
         metaCatalogSpend,
+        googleSpend,
         adSpend,
         roas: adSpend > 0 ? r.revenue / adSpend : null,
         poas: adSpend > 0 ? grossProfit / adSpend : null,
@@ -391,12 +427,13 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows }, adMetrics, sessionsByHandle, sessionsByHandleByPlatform, cogsRate] = await Promise.all([
+    const [{ rows }, adMetrics, skuTokenMetrics, sessionsByHandle, sessionsByHandleByPlatform, cogsRate] = await Promise.all([
       pool.query(
         `select
            product_id,
            max(product_handle) as product_handle,
            max(sku) as sku,
+           array_agg(distinct upper(sku)) filter (where sku is not null) as skus,
            max(title) as title,
            max(product_type) as product_type,
            max(vendor) as vendor,
@@ -408,6 +445,7 @@ shopifyRouter.get(
         [range.from, range.to]
       ),
       fetchAdMetricsByProductKeys(range.from, range.to),
+      fetchSkuAttributedMetricsByToken(range.from, range.to),
       fetchProductSessionsSafe(range.from, range.to),
       fetchProductSessionsByPlatformSafe(range.from, range.to),
       getCogsRate(),
@@ -416,8 +454,14 @@ shopifyRouter.get(
     const allRows: ProductQuadrantRow[] = rows.map((r) => {
       const google = r.product_id ? adMetrics.googleByProductGid.get(r.product_id) : undefined;
       const meta = r.product_handle ? adMetrics.metaByHandle.get(r.product_handle) : undefined;
-      const adSpend = (google?.spend ?? 0) + (meta?.spend ?? 0);
-      const adImpressions = (google?.impressions ?? 0) + (meta?.impressions ?? 0);
+      const skus: string[] = r.skus ?? [];
+      const skuAttributed = skuAttributedMetricsForProduct(skus, skuTokenMetrics);
+
+      const skuAttributedSpend = skuAttributed.spend;
+      const metaCatalogSpend = meta?.spend ?? 0;
+      const googleSpend = google?.spend ?? 0;
+      const adSpend = skuAttributedSpend + metaCatalogSpend + googleSpend;
+      const adImpressions = skuAttributed.impressions + (meta?.impressions ?? 0) + (google?.impressions ?? 0);
 
       const sessions = r.product_handle ? (sessionsByHandle.get(r.product_handle) ?? null) : null;
       const googleSessions = r.product_handle ? (sessionsByHandleByPlatform.google.get(r.product_handle) ?? null) : null;
@@ -436,6 +480,9 @@ shopifyRouter.get(
         vendor: r.vendor,
         unitsSold: r.units_sold,
         revenue,
+        skuAttributedSpend,
+        metaCatalogSpend,
+        googleSpend,
         adSpend,
         adImpressions,
         sessions,

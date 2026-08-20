@@ -313,18 +313,33 @@ export interface ShopifyProductRow {
   metaSessions: number | null;
   /** Meta spend from ads whose NAME carries this product's SKU as a "FIG-..."
    * tag (see metaSkuAttribution.ts's extractSkuToken) -- summed across every
-   * matching ad, regardless of campaign/ad set. 0 (not null) when no ad
-   * tagged this product this period. */
+   * matching ad, regardless of campaign/ad set, EXCLUDING any ad whose
+   * campaign already has catalog-level product spend (metaCatalogSpend
+   * below) for the same range. fact_ad_creative_performance (ad-level) and
+   * fact_shopping_product_performance (catalog/product-level) are two
+   * different breakdowns of the SAME underlying campaign spend, never meant
+   * to be summed (see db/migrations/0005's header) -- a catalog ad that
+   * happens to also carry a "FIG-..." tag in its name would otherwise be
+   * counted here AND in metaCatalogSpend, double-counting it. Confirmed
+   * live this exclusion actually matters (real catalog campaigns exist on
+   * this account). 0 (not null) when no non-catalog ad tagged this product
+   * this period. */
   skuAttributedSpend: number;
   /** Meta spend matched via the product CATALOG instead -- product_item_id
    * decoded the same way as Products' Website ROAS (see metrics.ts's
-   * META_PRODUCT_ITEM_PATTERN), matched by product handle. A different
-   * Meta ad mechanism than the name-tag above (catalog/dynamic ads are
-   * auto-generated, not manually named), so the two are additive, not
-   * overlapping double-counts of the same spend. 0 (not null) if unmatched. */
+   * META_PRODUCT_ITEM_PATTERN), matched by product handle. Mutually
+   * exclusive with skuAttributedSpend by construction (see its comment) --
+   * safe to sum. 0 (not null) if unmatched. */
   metaCatalogSpend: number;
-  /** skuAttributedSpend + metaCatalogSpend -- this product's total known
-   * Meta ad spend across both matching mechanisms. */
+  /** Google spend matched via the product's Shopping/PMax feed entry
+   * (fact_shopping_product_performance, keyed by product gid) -- the same
+   * mechanism ProductQuadrantRow's adSpend already used, now surfaced here
+   * too so this table's adSpend isn't Meta-only. 0 (not null) if unmatched. */
+  googleSpend: number;
+  /** skuAttributedSpend + metaCatalogSpend + googleSpend -- this product's
+   * total known ad spend across every platform and matching mechanism, with
+   * no double-counting (see skuAttributedSpend's comment). Was Meta-only
+   * before googleSpend existed. */
   adSpend: number;
   /** revenue / adSpend -- null if adSpend is 0. */
   roas: number | null;
@@ -373,8 +388,25 @@ export interface ProductQuadrantRow {
   vendor: string | null;
   unitsSold: number;
   revenue: number;
-  /** Combined Google + Meta ad spend matched to this product. 0 (not null)
-   * when the product genuinely has no matched ad spend this period. */
+  /** Meta spend from ads whose NAME carries this product's SKU as a
+   * "FIG-..." tag -- same mechanism/caveats as ShopifyProductRow's field of
+   * the same name, including the campaign-level exclusion that keeps it
+   * from double-counting metaCatalogSpend below. 0 (not null) if unmatched. */
+  skuAttributedSpend: number;
+  /** Meta spend matched via the product catalog (breakdowns=product_id) --
+   * same mechanism as ShopifyProductRow's field of the same name. 0 (not
+   * null) if unmatched. */
+  metaCatalogSpend: number;
+  /** Google spend matched via the product's Shopping/PMax feed entry
+   * (fact_shopping_product_performance, keyed by product gid). 0 (not
+   * null) if unmatched. */
+  googleSpend: number;
+  /** skuAttributedSpend + metaCatalogSpend + googleSpend -- this product's
+   * total known ad spend, every platform and matching mechanism combined,
+   * with no double-counting between skuAttributedSpend and
+   * metaCatalogSpend (see server/src/routes/shopify.ts's
+   * fetchSkuAttributedSpendByToken). 0 (not null) when the product
+   * genuinely has no matched ad spend this period. */
   adSpend: number;
   adImpressions: number;
   sessions: number | null;

@@ -251,6 +251,9 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
   const productExportColumns: ExportColumn<ProductQuadrantRow>[] = [
     { header: "Product", accessor: (r) => r.title ?? r.productId },
     { header: "Quadrant", accessor: (r) => r.quadrant },
+    { header: "SKU Attributed Spend (Meta)", accessor: (r) => r.skuAttributedSpend },
+    { header: "Catalog Spend (Meta)", accessor: (r) => r.metaCatalogSpend },
+    { header: "Google Spend", accessor: (r) => r.googleSpend },
     { header: "Ad Spend", accessor: (r) => r.adSpend },
     { header: "Impressions", accessor: (r) => r.adImpressions },
     { header: "Revenue", accessor: (r) => r.revenue },
@@ -279,12 +282,16 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
 
       <div className="flex items-center gap-1.5 text-xs text-ink-muted">
         <InfoNote label="Methodology">
-          Every Shopify product is classified into one of 4 quadrants by combined Google + Meta ad spend (x) vs.
-          Shopify revenue (y), split at the cross-sectional MEDIAN across active products this period -- not an
-          arbitrary fixed threshold. POAS (Profit on Ad Spend) = Gross Profit ÷ Ad Spend, where Gross Profit = Revenue
-          × 65% (COGS modeled at 35% of selling price -- no real per-product cost data exists, so this is a modeled
-          figure). Ad spend is decoded from each platform's product catalog ID and matched to the Shopify product,
-          same join used by Products' Website ROAS.
+          Every Shopify product is classified into one of 4 quadrants by combined ad spend (x) vs. Shopify revenue
+          (y), split at the cross-sectional MEDIAN across active products this period -- not an arbitrary fixed
+          threshold. Ad spend combines three matching mechanisms with no double-counting between them: Meta spend
+          from ads whose name carries a "FIG-..." SKU tag (excluding any ad whose campaign already has Meta catalog
+          spend for the same range -- catalog ads that happen to also carry a tag would otherwise be counted twice),
+          Meta catalog spend (dynamic ads matched by product handle), and Google spend (Shopping/PMax feed, matched
+          by product ID) -- the same combined figure Shopify's own Products table shows, so the two are always
+          consistent. POAS (Profit on Ad Spend) = Gross Profit ÷ Ad Spend, where Gross Profit = Revenue × 65% (COGS
+          modeled at 35% of selling price -- no real per-product cost data exists, so this is a modeled figure). Full
+          spend breakdown (per mechanism) is in the exported file.
         </InfoNote>
         Products classified by ad spend vs. sales, with a POAS/profitability lens
         {data && data.excludedInactiveCount > 0 && (

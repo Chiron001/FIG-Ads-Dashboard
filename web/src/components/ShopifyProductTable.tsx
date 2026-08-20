@@ -35,6 +35,8 @@ const NUMERIC_COLUMNS: NumericColumn[] = [
   { key: "revenue", label: "Revenue", format: (v) => formatCurrency(v) },
   { key: "skuAttributedSpend", label: "SKU Attributed Spend", format: (v) => formatCurrency(v) },
   { key: "metaCatalogSpend", label: "Meta Catalog Spend", format: (v) => formatCurrency(v) },
+  { key: "googleSpend", label: "Google Spend", format: (v) => formatCurrency(v) },
+  { key: "adSpend", label: "Total Ad Spend", format: (v) => formatCurrency(v) },
   { key: "roas", label: "ROAS", format: (v) => formatMultiplier(v) },
   { key: "poas", label: "POAS", format: (v) => formatMultiplier(v) },
   { key: "sessions", label: "Sessions", format: (v) => formatNumber(v) },
@@ -164,13 +166,17 @@ export function ShopifyProductTable({ products, comparisonProducts, comparisonLa
           <InfoNote label="About these columns">
             SKU Attributed Spend is Meta spend from ads whose NAME carries this product's SKU tag -- a token can match
             more than one product's SKUs, in which case its spend is counted for each (directional, same caveat as
-            Meta's own SKU Attribution page). Meta Catalog Spend is a different, exact-match Meta mechanism (dynamic
-            catalog ads), matched by product handle -- the two are additive, not double-counting the same spend. ROAS
-            = Revenue ÷ (SKU Attributed Spend + Meta Catalog Spend); POAS = Gross Profit ÷ that same combined spend,
-            Gross Profit modeled at 65% of revenue (COGS assumed 35%). ATC is Shopify Analytics' sessions that added
-            this product to cart; Bounce Rate is Shopify Analytics' own per-product figure, live. Performance always
-            compares to the immediately-adjacent previous period (same length, right before this one) regardless of
-            the top bar's "Compare to" setting -- click a badge for the full analytical breakdown.
+            Meta's own SKU Attribution page). It deliberately excludes any ad whose campaign already has Meta Catalog
+            Spend (a different, exact-match mechanism -- dynamic catalog ads, matched by product handle) for the same
+            range, since a catalog ad that happens to also carry a SKU tag would otherwise be counted twice -- so this
+            number can read lower than Meta's own SKU Attribution page, which doesn't exclude catalog campaigns since
+            it never combines with catalog spend in the first place. Google Spend is this product's Shopping/PMax
+            feed-matched spend. Total Ad Spend sums all three with no double-counting. ROAS = Revenue ÷ Total Ad
+            Spend; POAS = Gross Profit ÷ Total Ad Spend, Gross Profit modeled at 65% of revenue (COGS assumed 35%).
+            ATC is Shopify Analytics' sessions that added this product to cart; Bounce Rate is Shopify Analytics' own
+            per-product figure, live. Performance always compares to the immediately-adjacent previous period (same
+            length, right before this one) regardless of the top bar's "Compare to" setting -- click a badge for the
+            full analytical breakdown.
           </InfoNote>
           {comparing && comparisonLabel && (
             <span className="text-xs text-ink-muted">

@@ -1124,6 +1124,58 @@ Build proceeds phase by phase per the project spec, committing after each.
       its pre-export size and lands jsPDF in its own lazily-fetched chunk
       instead. Verified live: all three formats download real data from
       three different tables (9 files, CSV content spot-checked correct).
+- [x] **Fixed real double-counted Meta ad spend, and made Product Quadrants'
+      spend match Shopify Products'/Meta SKU Attribution's methodology**
+      (2026-08-20). Two related bugs, both flagged from screenshots:
+      - Product Quadrants' `adSpend` only ever summed Google + Meta
+        *catalog* spend (`fact_shopping_product_performance`) -- it never
+        included Meta's SKU-name-tag spend at all, so any product driven
+        mostly by manually-tagged (non-catalog) Meta ads showed far less
+        spend there than on the Shopify Products table or Meta's own SKU
+        Attribution page, which both do include it.
+      - Fixing that naively (just adding the SKU-tag spend in) would have
+        introduced a second, worse bug: `fact_ad_creative_performance`
+        (ad-level) and `fact_shopping_product_performance` (catalog/
+        product-level) are two different BREAKDOWNS of the same underlying
+        campaign spend -- db/migrations/0005's header already says "never
+        summed" -- so a catalog ad that happens to also carry a "FIG-..."
+        tag in its name would be counted once via the name-tag match and
+        again via the catalog match. Confirmed live this isn't
+        hypothetical: 52 real ads, ₹2,25,472 of spend this period alone,
+        would have been double-counted.
+      - Fixed both at once with a new `fetchSkuAttributedMetricsByToken` in
+        `server/src/routes/shopify.ts`: sums Meta ad-name-tag spend same as
+        before, but now EXCLUDES any ad whose campaign already has catalog-
+        level spend for the same range (a `NOT EXISTS` against
+        `fact_shopping_product_performance` by campaign_id -- campaign, not
+        ad, because that table has no ad_id column). Both `/shopify/products`
+        and `/shopify/product-quadrants` now call the same corrected
+        function and additionally pick up Google spend (Shopping/PMax feed,
+        already computed but previously only wired into Quadrants, not the
+        Products table) -- confirmed live the two endpoints now return
+        identical skuAttributedSpend/metaCatalogSpend/googleSpend/adSpend
+        for the same product/range. `metaSkuAttribution.ts` (the standalone
+        SKU Attribution page) is deliberately UNCHANGED -- it never combines
+        with catalog spend in the first place, so the exclusion doesn't
+        apply there, and its number can legitimately read higher than the
+        Products table's for a catalog-tagged SKU (documented in both the
+        shared types and the Products table's own InfoNote, so the
+        difference reads as intentional, not a bug). New `googleSpend` /
+        `skuAttributedSpend` / `metaCatalogSpend` breakdown columns added to
+        the Shopify Products table and to Product Quadrants' export.
+- [x] **Top bar and its dropdowns are now solid, not glass** (2026-08-20),
+      on explicit request -- the blur/translucency was letting whatever
+      scrolled underneath (KPI tiles, chart fills, especially the amber/
+      orange palette) bleed through distractingly instead of reading as an
+      honest depth cue. `TopBar.tsx` moved from `.glass` to
+      `bg-surface-1` + a hairline border + card shadow; its internal
+      borders/inputs (previously hardcoded `border-white/10`/
+      `bg-white/[0.03]`, which assumed a permanently-dark glass background)
+      now use the regular theme-aware tokens, since the header itself is
+      white in light theme now -- the same class of fix already applied to
+      the date range dropdown earlier. index.css's governing design-system
+      comment updated to match (glass is now reserved for dimmed-backdrop
+      floating layers only -- the command palette, tooltips, the drawer).
 
 ## Structure
 
