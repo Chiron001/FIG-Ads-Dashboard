@@ -12,6 +12,7 @@ import { googleSkuAttributionRouter } from "./routes/googleSkuAttribution";
 import { metaCreativePerformanceRouter } from "./routes/metaCreativePerformance";
 import { settingsRouter } from "./routes/settings";
 import { projectionRouter } from "./routes/projection";
+import { aiRouter } from "./routes/ai";
 import { authRouter } from "./routes/auth";
 import { siteAuthMiddleware } from "./middleware/siteAuth";
 import type { AppConfig, HealthStatus } from "@fig/shared";
@@ -49,6 +50,8 @@ app.use("/meta-creative-performance", metaCreativePerformanceRouter);
 app.use("/stats", statsRouter);
 app.use("/settings", settingsRouter);
 app.use("/projection", projectionRouter);
+// AI home page's "ask anything" box -- see routes/ai.ts.
+app.use("/ai", aiRouter);
 
 function nowIST(): string {
   return new Date().toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" }).replace(" ", "T");

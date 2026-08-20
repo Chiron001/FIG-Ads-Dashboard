@@ -945,6 +945,11 @@ export interface AppSettings {
   /** Cost of goods sold as a fraction of selling price (0.35 = 35%). */
   cogsRate: number;
   additionalCosts: AdditionalCost[];
+  /** Whether an Anthropic API key is stored (app_settings.anthropic_api_key)
+   * -- powers the AI home page. The key itself is never returned to the
+   * client, only this boolean; PATCH /settings write-only accepts
+   * `anthropicApiKey` to set/replace it. */
+  anthropicApiKeyConfigured: boolean;
   updatedAt: string;
 }
 
@@ -1046,4 +1051,34 @@ export interface ProjectionUpdateEntry {
 
 export interface ProjectionUpdateRequest {
   updates: ProjectionUpdateEntry[];
+}
+
+// --- AI Home ("ask anything" assistant) -------------------------------------
+//
+// The dashboard's home page: a single natural-language question box, answered
+// by an LLM (Claude, via the Anthropic Messages API -- see server/src/routes/
+// ai.ts) grounded in a real statistical snapshot of the account (ad platform
+// totals + Shopify performance for a fixed trailing window), not a blind
+// model guess. Deliberately text-first, no charts here -- the rest of the
+// dashboard is where a reader drills into a specific number.
+
+export interface AiAskRequest {
+  question: string;
+}
+
+export interface AiAskResponse {
+  answer: string;
+  generatedAt: string;
+}
+
+export interface AiQueryHistoryEntry {
+  id: string;
+  question: string;
+  createdAt: string;
+}
+
+/** Newest first, capped server-side at 25 -- the home page shows the first 3
+ * inline and the full list in a "show all" view. */
+export interface AiQueryHistoryResponse {
+  entries: AiQueryHistoryEntry[];
 }

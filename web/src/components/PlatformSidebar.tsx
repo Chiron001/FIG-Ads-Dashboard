@@ -6,15 +6,18 @@ import type { Theme } from "../lib/theme";
 import { PlatformIcon } from "./icons/PlatformIcon";
 import { ShopifyIcon } from "./icons/ShopifyIcon";
 
-/** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify
- * (not an ad platform -- no spend/campaigns, not in the shared Platform
- * union), plus Meta's SKU Attribution and Creative Performance sub-views
- * and Google's SKU Attribution sub-view (nested under their respective
- * platforms in the nav, not platforms of their own), plus Shopify's
- * Product Quadrants and Projection Sheet sub-views (nested under Shopify
- * the same way), plus Settings (app-wide config, its own top-level
- * group -- not tied to any one platform or Shopify). */
+/** What can be selected in the sidebar -- "home" (the AI ask-anything
+ * landing page, its own top-level entry, first in the nav and the app's
+ * default view), the 4 ad platforms, plus Shopify (not an ad platform -- no
+ * spend/campaigns, not in the shared Platform union), plus Meta's SKU
+ * Attribution and Creative Performance sub-views and Google's SKU
+ * Attribution sub-view (nested under their respective platforms in the
+ * nav, not platforms of their own), plus Shopify's Product Quadrants and
+ * Projection Sheet sub-views (nested under Shopify the same way), plus
+ * Settings (app-wide config, its own top-level group -- not tied to any
+ * one platform or Shopify). */
 export type SidebarSelection =
+  | "home"
   | Platform
   | "shopify"
   | "meta-sku-attribution"
@@ -38,6 +41,16 @@ interface Props {
   onMobileClose: () => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+}
+
+function HomeIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M2 7.2 8 2l6 5.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.3 6.3V13a.8.8 0 0 0 .8.8h7.8a.8.8 0 0 0 .8-.8V6.3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M6.3 13.8V10a.8.8 0 0 1 .8-.8h1.8a.8.8 0 0 1 .8.8v3.8" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function TagIcon({ size }: { size: number }) {
@@ -167,7 +180,22 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
         </div>
 
         <nav className="flex flex-1 flex-col space-y-0.5 overflow-y-auto p-2">
-          {!collapsed && <div className="px-2 pb-1.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Platforms</div>}
+          <button
+            type="button"
+            title={collapsed ? "Home" : undefined}
+            onClick={() => handleChange("home")}
+            className={`relative flex w-full items-center rounded-md text-left text-sm font-medium transition-colors ${
+              collapsed ? "justify-center px-2 py-2.5" : "gap-2.5 px-2.5 py-2.5"
+            } ${active === "home" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-secondary)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-primary)]"}`}
+          >
+            {active === "home" && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent" />}
+            <span className="relative shrink-0">
+              <HomeIcon size={18} />
+            </span>
+            {!collapsed && <span className="flex-1 truncate">Home</span>}
+          </button>
+
+          {!collapsed && <div className="px-2 pb-1.5 pt-4 text-[10px] font-medium uppercase tracking-wide text-[var(--sidebar-ink-muted)]">Platforms</div>}
           {ALL_PLATFORMS.map((platform) => {
             const isActive = platform === active;
             return (

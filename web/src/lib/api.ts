@@ -26,6 +26,8 @@ import type {
   AdditionalCost,
   ProjectionResponse,
   ProjectionUpdateEntry,
+  AiAskResponse,
+  AiQueryHistoryResponse,
 } from "@fig/shared";
 import { getStoredPassword } from "./sitePassword";
 
@@ -221,7 +223,7 @@ export function fetchSettings(): Promise<SettingsResponse> {
   return getJSON(`/settings`);
 }
 
-export function updateSettings(body: { cogsRate?: number; additionalCosts?: AdditionalCost[] }): Promise<SettingsResponse> {
+export function updateSettings(body: { cogsRate?: number; additionalCosts?: AdditionalCost[]; anthropicApiKey?: string }): Promise<SettingsResponse> {
   return patchJSON(`/settings`, body);
 }
 
@@ -233,4 +235,26 @@ export function fetchProjection(): Promise<ProjectionResponse> {
 
 export function updateProjection(updates: ProjectionUpdateEntry[]): Promise<{ ok: boolean }> {
   return patchJSON(`/projection`, { updates });
+}
+
+// --- AI Home ("ask anything") -----------------------------------------------
+
+export async function askAi(question: string): Promise<AiAskResponse> {
+  const res = await fetch(`${BASE}/ai/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ question }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // not_configured is a distinct, expected case (see routes/ai.ts) -- the
+    // message is written to be shown to the user directly, not a generic
+    // "request failed".
+    throw new Error(body.message ?? body.error ?? `${res.status} ${res.statusText}`);
+  }
+  return body;
+}
+
+export function fetchAiHistory(): Promise<AiQueryHistoryResponse> {
+  return getJSON(`/ai/history`);
 }

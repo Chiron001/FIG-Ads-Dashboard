@@ -1194,6 +1194,35 @@ Build proceeds phase by phase per the project spec, committing after each.
       the same way Meta's sub-views are nested under Meta Ads. Verified live
       against real synced data (91 matched SKUs, 623 product items) and via
       Playwright screenshots in both themes.
+- [x] **AI "Ask anything" Home page** (2026-08-20), a new landing page (now
+      the app's default view, own top-level sidebar entry) with a single
+      natural-language question box, answered by Claude (Anthropic Messages
+      API) grounded in a real statistical snapshot of the account -- trailing
+      30-day per-platform ad totals (spend/clicks/conversions/revenue/ROAS/
+      CPA), Shopify orders/revenue/AOV/units, top products by revenue, and a
+      7-day-vs-prior-7-day spend/revenue trend -- queried fresh from
+      `fact_ad_performance`/`fact_shopify_orders`/`fact_shopify_line_items`
+      on every question, never cached or hardcoded. Deliberately chart-free
+      and text-only on explicit request ("very much statistical", "don't
+      flood it with charts and graphs" -- the platform pages remain where a
+      reader drills into a specific number). New `server/src/routes/ai.ts`
+      (`POST /ai/ask`, `GET /ai/history`) and `web/src/components/
+      HomeSection.tsx`. Anthropic API key is entered from the **Settings**
+      page, not `.env` -- stored in a new `app_settings.anthropic_api_key`
+      column (`db/migrations/0010_ai_home.sql`), write-only (PATCH accepts
+      it, GET never returns it, only an `anthropicApiKeyConfigured`
+      boolean), so it can be added/rotated without a redeploy. Every
+      question asked is logged to a new `ai_query_log` table; the Home page
+      shows the last 3 inline plus a "Show all" modal capped at the most
+      recent 25 (`GET /ai/history`), matching a Shopify-admin-style recent-
+      search pattern. An invalid/revoked key surfaces as a plain-language
+      message ("That Anthropic API key was rejected...") rather than the
+      raw SDK error, confirmed live with a dummy key. Not yet exercised
+      end-to-end with a real key (none provided as of this writing) -- the
+      full failure path (not configured -> disabled input; configured but
+      invalid -> friendly error) is verified live via Playwright in both
+      themes; the golden path (a real answer) is code-reviewed but unverified
+      pending a real `ANTHROPIC_API_KEY`.
 
 ## Structure
 

@@ -8,13 +8,25 @@ export const settingsRouter = Router();
 
 const COST_TYPES: AdditionalCostType[] = ["percent_of_revenue", "flat_per_order", "flat_total"];
 
+// Raw key value, for server-side use only (routes/ai.ts) -- never routed
+// through fetchSettings/AppSettings, which deliberately only ever exposes
+// the anthropicApiKeyConfigured boolean to the client. Falls back to the
+// ANTHROPIC_API_KEY env var if the DB value isn't set, so a real .env
+// deployment still works without the Settings page.
+export async function getAnthropicApiKey(): Promise<string | null> {
+  const pool = getPool();
+  const { rows } = await pool.query(`select anthropic_api_key from app_settings where id = true`);
+  return (rows[0]?.anthropic_api_key as string | null) ?? process.env.ANTHROPIC_API_KEY ?? null;
+}
+
 async function fetchSettings(): Promise<AppSettings> {
   const pool = getPool();
-  const { rows } = await pool.query(`select cogs_rate, additional_costs, updated_at from app_settings where id = true`);
+  const { rows } = await pool.query(`select cogs_rate, additional_costs, anthropic_api_key, updated_at from app_settings where id = true`);
   const row = rows[0];
   return {
     cogsRate: row?.cogs_rate ?? 0.35,
     additionalCosts: (row?.additional_costs ?? []) as AdditionalCost[],
+    anthropicApiKeyConfigured: Boolean(row?.anthropic_api_key),
     updatedAt: row?.updated_at instanceof Date ? row.updated_at.toISOString() : (row?.updated_at ?? new Date().toISOString()),
   };
 }
@@ -24,7 +36,7 @@ async function fetchSettings(): Promise<AppSettings> {
 // everyone the site password is shared with, so real credentials never
 // cross the wire here (see shared/src/index.ts's header comment on
 // IntegrationStatus).
-function integrationStatuses(): IntegrationStatus[] {
+function integrationStatuses(anthropicConfigured: boolean): IntegrationStatus[] {
   return [
     {
       id: "google",
@@ -62,6 +74,14 @@ function integrationStatuses(): IntegrationStatus[] {
       connected: Boolean(env.supabase.databaseUrl),
       envVars: ["DATABASE_URL"],
     },
+    {
+      id: "anthropic",
+      label: "AI Assistant (Anthropic)",
+      // Set from this Settings page (below), not .env -- so it's a DB flag,
+      // not an env var check like the others.
+      connected: anthropicConfigured,
+      envVars: ["(set from the field below, not an env var)"],
+    },
   ];
 }
 
@@ -69,7 +89,8 @@ function integrationStatuses(): IntegrationStatus[] {
 settingsRouter.get(
   "/",
   asyncHandler(async (_req, res) => {
-    const response: SettingsResponse = { settings: await fetchSettings(), integrations: integrationStatuses() };
+    const settings = await fetchSettings();
+    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured) };
     res.json(response);
   })
 );
@@ -88,14 +109,18 @@ function isValidCost(c: unknown): c is AdditionalCost {
   );
 }
 
-// PATCH /settings -- body: { cogsRate?, additionalCosts? }. Either or both;
-// only the fields present are updated, matching the app's other "editable
-// starting-point config" endpoints (e.g. TARGET_ROAS/GROSS_MARGIN) in spirit
-// -- though those two stay session-only by design, this one persists.
+// PATCH /settings -- body: { cogsRate?, additionalCosts?, anthropicApiKey? }.
+// Any subset; only the fields present are updated, matching the app's other
+// "editable starting-point config" endpoints (e.g. TARGET_ROAS/GROSS_MARGIN)
+// in spirit -- though those two stay session-only by design, this one
+// persists. anthropicApiKey is write-only: accepted here, never echoed back
+// in the response body (see fetchSettings/AppSettings -- only the boolean
+// anthropicApiKeyConfigured is ever returned). Passing an empty string clears
+// it, matching how a user would "remove" a key from a text field.
 settingsRouter.patch(
   "/",
   asyncHandler(async (req, res) => {
-    const body = (req.body ?? {}) as { cogsRate?: unknown; additionalCosts?: unknown };
+    const body = (req.body ?? {}) as { cogsRate?: unknown; additionalCosts?: unknown; anthropicApiKey?: unknown };
     const pool = getPool();
 
     if (body.cogsRate !== undefined) {
@@ -115,7 +140,16 @@ settingsRouter.patch(
       await pool.query(`update app_settings set additional_costs = $1::jsonb, updated_at = now() where id = true`, [JSON.stringify(body.additionalCosts)]);
     }
 
-    const response: SettingsResponse = { settings: await fetchSettings(), integrations: integrationStatuses() };
+    if (body.anthropicApiKey !== undefined) {
+      if (typeof body.anthropicApiKey !== "string") {
+        return res.status(400).json({ error: "anthropicApiKey must be a string" });
+      }
+      const trimmed = body.anthropicApiKey.trim();
+      await pool.query(`update app_settings set anthropic_api_key = $1, updated_at = now() where id = true`, [trimmed.length > 0 ? trimmed : null]);
+    }
+
+    const settings = await fetchSettings();
+    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured) };
     res.json(response);
   })
 );

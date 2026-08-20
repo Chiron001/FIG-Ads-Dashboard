@@ -3,12 +3,13 @@ import type { Platform, SyncStatusResponse, ShopifyStatus } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
 import { type ComparisonMode } from "./lib/comparisonRange";
-import { fetchSyncStatus, fetchConfig, fetchShopifyStatus, triggerSync, triggerShopifySync } from "./lib/api";
+import { fetchSyncStatus, fetchConfig, fetchSettings, fetchShopifyStatus, triggerSync, triggerShopifySync } from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
 import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
+import { HomeSection } from "./components/HomeSection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
 import { GoogleSkuAttributionSection } from "./components/GoogleSkuAttributionSection";
@@ -28,7 +29,7 @@ const FALLBACK_TARGET_ROAS = 5.5;
 function App() {
   const [range, setRange] = useState<DateRange>(() => presetRange("last7"));
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>("none");
-  const [activeSelection, setActiveSelection] = useState<SidebarSelection>("google");
+  const [activeSelection, setActiveSelection] = useState<SidebarSelection>("home");
   const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
   const [shopifyStatus, setShopifyStatus] = useState<ShopifyStatus | null>(null);
   // Distinct from "syncStatus is null" -- lets the UI tell "server
@@ -67,6 +68,18 @@ function App() {
         /* keep fallback defaults -- not worth a banner over a config nicety */
       });
   }, []);
+
+  // Whether the Home page's AI box can actually answer -- re-checked every
+  // time Home becomes active (not just once on mount) so saving a key on
+  // the Settings page and navigating back to Home picks it up without a
+  // full reload.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  useEffect(() => {
+    if (activeSelection !== "home") return;
+    fetchSettings()
+      .then((s) => setAiConfigured(s.settings.anthropicApiKeyConfigured))
+      .catch(() => {});
+  }, [activeSelection]);
 
   // Distinct from syncStatus/shopifyStatus themselves being non-null --
   // those stay null on a failed fetch (see the catch handlers below), so
@@ -154,6 +167,7 @@ function App() {
     handleSyncAll();
   }, [statusLoaded, handleSyncAll]);
 
+  const isHome = activeSelection === "home";
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
@@ -162,8 +176,8 @@ function App() {
   const isShopifyProjectionSheet = activeSelection === "shopify-projection-sheet";
   const isSettings = activeSelection === "settings";
   const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
-  const lastSync = isSettings
-    ? null // app-wide config, not synced data -- no "last synced" figure applies
+  const lastSync = isHome || isSettings
+    ? null // Home has no sync of its own (reads already-synced data); Settings is app-wide config, not synced data
     : isShopify || isShopifyProductQuadrants || isShopifyProjectionSheet
       ? (shopifyStatus?.lastSync ?? null)
       : isMetaSubView
@@ -188,10 +202,13 @@ function App() {
   // on every ad-platform page (using the same global range), hidden on
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
   // lens on Meta specifically, one platform of the four this band spans).
-  const showSpendFlow = !isShopify && !isMetaSubView && !isGoogleSkuAttribution && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
-  const title = isSettings
-    ? "Settings"
-    : isShopify
+  const showSpendFlow =
+    !isHome && !isShopify && !isMetaSubView && !isGoogleSkuAttribution && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
+  const title = isHome
+    ? "Home"
+    : isSettings
+      ? "Settings"
+      : isShopify
       ? "Shopify"
       : isShopifyProductQuadrants
         ? "Shopify — Product Quadrants"
@@ -203,7 +220,7 @@ function App() {
               ? "Meta Ads — Creative Performance"
               : isGoogleSkuAttribution
                 ? "Google Ads — SKU Attribution"
-                : PLATFORM_LABELS[activeSelection];
+                : PLATFORM_LABELS[activeSelection as Platform];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -244,7 +261,9 @@ function App() {
             </div>
           )}
 
-          {!isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && !isGoogleSkuAttribution && <AttributionBanner />}
+          {!isHome && !isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && !isGoogleSkuAttribution && (
+            <AttributionBanner />
+          )}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -260,7 +279,9 @@ function App() {
             </div>
           )}
 
-          {isSettings ? (
+          {isHome ? (
+            <HomeSection aiConfigured={aiConfigured} onGoToSettings={() => setActiveSelection("settings")} />
+          ) : isSettings ? (
             <SettingsSection key="settings" range={range} />
           ) : isShopify ? (
             <ShopifySection
@@ -290,11 +311,14 @@ function App() {
           ) : isGoogleSkuAttribution ? (
             <GoogleSkuAttributionSection key="google-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : (
+            // Every non-Platform SidebarSelection is handled by a branch
+            // above -- what's left here is always a real Platform, this
+            // cast just tells TS what the isX flags already guarantee.
             <PlatformSection
               key={activeSelection}
-              platform={activeSelection}
+              platform={activeSelection as Platform}
               range={range}
-              connected={connectedMap[activeSelection]}
+              connected={connectedMap[activeSelection as Platform]}
               lastSync={lastSync}
               onSyncComplete={handleSyncComplete}
               refreshKey={refreshKey}

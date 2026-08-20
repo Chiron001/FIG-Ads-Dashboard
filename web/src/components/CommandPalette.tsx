@@ -37,6 +37,18 @@ export function CommandPalette({ onNavigate, onSetRange, onClose }: Props) {
 
   const items = useMemo((): CommandItem[] => {
     const nav: CommandItem[] = [
+      {
+        key: "nav-home",
+        label: "Home",
+        hint: "Go to section",
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M2 7.2 8 2l6 5.2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M3.3 6.3V13a.8.8 0 0 0 .8.8h7.8a.8.8 0 0 0 .8-.8V6.3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+        ),
+        run: () => onNavigate("home"),
+      },
       ...ALL_PLATFORMS.map((p: Platform) => ({
         key: `nav-${p}`,
         label: PLATFORM_LABELS[p],
@@ -44,6 +56,13 @@ export function CommandPalette({ onNavigate, onSetRange, onClose }: Props) {
         icon: <PlatformIcon platform={p} size={16} />,
         run: () => onNavigate(p),
       })),
+      {
+        key: "nav-google-sku",
+        label: "Google Ads — SKU Attribution",
+        hint: "Go to section",
+        icon: <PlatformIcon platform="google" size={16} />,
+        run: () => onNavigate("google-sku-attribution"),
+      },
       {
         key: "nav-meta-sku",
         label: "Meta Ads — SKU Attribution",

@@ -26,6 +26,11 @@ function costsEqual(a: AdditionalCost[], b: AdditionalCost[]): boolean {
 
 export function SettingsSection({ range }: Props) {
   const [integrations, setIntegrations] = useState<IntegrationStatus[] | null>(null);
+  const [anthropicConfigured, setAnthropicConfigured] = useState(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [savingKey, setSavingKey] = useState(false);
+  const [keyMessage, setKeyMessage] = useState<string | null>(null);
+  const [keyError, setKeyError] = useState<string | null>(null);
   const [cogsRatePct, setCogsRatePct] = useState("35"); // draft, kept as a string so a half-typed "3" doesn't get clobbered
   const [savedCogsRate, setSavedCogsRate] = useState(0.35);
   const [costs, setCosts] = useState<AdditionalCost[]>([]);
@@ -46,6 +51,7 @@ export function SettingsSection({ range }: Props) {
       .then((res) => {
         if (cancelled) return;
         setIntegrations(res.integrations);
+        setAnthropicConfigured(res.settings.anthropicApiKeyConfigured);
         setCogsRatePct(String(Math.round(res.settings.cogsRate * 1000) / 10));
         setSavedCogsRate(res.settings.cogsRate);
         setCosts(res.settings.additionalCosts);
@@ -125,6 +131,26 @@ export function SettingsSection({ range }: Props) {
     }
   }
 
+  // Separate save action from the COGS/Additional Costs form above -- the
+  // key is write-only and should take effect the moment it's saved, not get
+  // bundled into that form's dirty-tracking/discard flow.
+  async function saveApiKey(value: string) {
+    setKeyError(null);
+    setKeyMessage(null);
+    setSavingKey(true);
+    try {
+      const res = await updateSettings({ anthropicApiKey: value });
+      setAnthropicConfigured(res.settings.anthropicApiKeyConfigured);
+      setIntegrations(res.integrations);
+      setApiKeyDraft("");
+      setKeyMessage(res.settings.anthropicApiKeyConfigured ? "Saved. The AI home page is now live." : "Cleared.");
+    } catch (err) {
+      setKeyError(String((err as Error).message ?? err));
+    } finally {
+      setSavingKey(false);
+    }
+  }
+
   function discardChanges() {
     setCogsRatePct(String(Math.round(savedCogsRate * 1000) / 10));
     setCosts(savedCosts);
@@ -191,6 +217,49 @@ export function SettingsSection({ range }: Props) {
           ))}
           {!integrations && loading && <div className="py-4 text-center text-sm text-ink-muted">Loading…</div>}
         </div>
+      </div>
+
+      {/* --- AI Assistant (Anthropic API key) ----------------------------- */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-display text-base text-ink-primary">AI Assistant</h3>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              anthropicConfigured ? "bg-status-good/15 text-status-good" : "bg-surface-2 text-ink-muted"
+            }`}
+          >
+            {anthropicConfigured ? "Configured" : "Not configured"}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Powers the Home page's "ask anything" box. Paste an Anthropic API key here -- it's stored in the database,
+          never shown again once saved, and never returned to the browser after this.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="password"
+            placeholder={anthropicConfigured ? "Replace the saved key…" : "sk-ant-…"}
+            value={apiKeyDraft}
+            onChange={(e) => setApiKeyDraft(e.target.value)}
+            autoComplete="off"
+            className="min-w-0 flex-1 rounded-md border border-border bg-surface-0 px-2.5 py-1.5 font-mono text-sm text-ink-primary placeholder:font-sans placeholder:text-ink-muted"
+          />
+          <button
+            type="button"
+            onClick={() => saveApiKey(apiKeyDraft)}
+            disabled={savingKey || !apiKeyDraft.trim()}
+            className="shrink-0 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-surface-0 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {savingKey ? "Saving…" : "Save key"}
+          </button>
+          {anthropicConfigured && (
+            <button type="button" onClick={() => saveApiKey("")} className="shrink-0 text-xs text-ink-muted underline hover:text-status-critical">
+              Clear
+            </button>
+          )}
+        </div>
+        {keyError && <p className="mt-2 text-xs text-status-critical">{keyError}</p>}
+        {keyMessage && !keyError && <p className="mt-2 text-xs text-status-good">{keyMessage}</p>}
       </div>
 
       {/* --- Products COGS ------------------------------------------------ */}
