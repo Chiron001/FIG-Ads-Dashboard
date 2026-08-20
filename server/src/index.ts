@@ -8,6 +8,7 @@ import { shopifyRouter } from "./routes/shopify";
 import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
+import { googleSkuAttributionRouter } from "./routes/googleSkuAttribution";
 import { metaCreativePerformanceRouter } from "./routes/metaCreativePerformance";
 import { settingsRouter } from "./routes/settings";
 import { projectionRouter } from "./routes/projection";
@@ -38,6 +39,9 @@ app.use("/shopify", shopifyRouter);
 // routes/metaSkuAttribution.ts. Its own top-level path (not nested under
 // /shopify or /metrics) since it genuinely reads from both.
 app.use("/meta-sku-attribution", metaSkuAttributionRouter);
+// Google's exact counterpart -- see routes/googleSkuAttribution.ts's header
+// comment for why this one doesn't need a name-tag guess.
+app.use("/google-sku-attribution", googleSkuAttributionRouter);
 // Second Meta-only lens on the same ad-name-tagging idea, this time parsing
 // the full creative naming convention ("$...$" wrapper) -- see
 // routes/metaCreativePerformance.ts and util/creativeTag.ts.

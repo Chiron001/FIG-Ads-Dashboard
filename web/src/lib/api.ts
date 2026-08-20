@@ -20,6 +20,7 @@ import type {
   MetricsProductsParetoResponse,
   MetricsAdsResponse,
   MetaSkuAttributionResponse,
+  GoogleSkuAttributionResponse,
   MetaCreativePerformanceResponse,
   SettingsResponse,
   AdditionalCost,
@@ -202,6 +203,10 @@ export function fetchAds(platform: GrainPlatform, from: string, to: string, camp
 
 export function fetchMetaSkuAttribution(from: string, to: string): Promise<MetaSkuAttributionResponse> {
   return getJSON(`/meta-sku-attribution?from=${from}&to=${to}`);
+}
+
+export function fetchGoogleSkuAttribution(from: string, to: string): Promise<GoogleSkuAttributionResponse> {
+  return getJSON(`/google-sku-attribution?from=${from}&to=${to}`);
 }
 
 // --- Meta Creative Performance (per-creative $...$ tag breakdown) ----------

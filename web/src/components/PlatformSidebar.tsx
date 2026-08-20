@@ -9,15 +9,17 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
 /** What can be selected in the sidebar -- the 4 ad platforms, plus Shopify
  * (not an ad platform -- no spend/campaigns, not in the shared Platform
  * union), plus Meta's SKU Attribution and Creative Performance sub-views
- * (nested under Meta Ads in the nav, not platforms of their own), plus
- * Shopify's Product Quadrants and Projection Sheet sub-views (nested under
- * Shopify the same way), plus Settings (app-wide config, its own top-level
+ * and Google's SKU Attribution sub-view (nested under their respective
+ * platforms in the nav, not platforms of their own), plus Shopify's
+ * Product Quadrants and Projection Sheet sub-views (nested under Shopify
+ * the same way), plus Settings (app-wide config, its own top-level
  * group -- not tied to any one platform or Shopify). */
 export type SidebarSelection =
   | Platform
   | "shopify"
   | "meta-sku-attribution"
   | "meta-creative-performance"
+  | "google-sku-attribution"
   | "shopify-product-quadrants"
   | "shopify-projection-sheet"
   | "settings";
@@ -254,6 +256,40 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       <span className="truncate">↳ Creative Performance</span>
                     </button>
                   </>
+                )}
+
+                {/* Google-only sub-view: same idea as Meta's SKU Attribution
+                    above, but exact rather than a name-tag guess -- see
+                    GoogleSkuAttributionSection's header comment. */}
+                {platform === "google" && collapsed && (
+                  <div className="mt-0.5 flex flex-col items-center gap-0.5">
+                    <button
+                      type="button"
+                      title="Google Ads — SKU Attribution"
+                      onClick={() => handleChange("google-sku-attribution")}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        active === "google-sku-attribution" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <TagIcon size={13} />
+                    </button>
+                  </div>
+                )}
+                {platform === "google" && !collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => handleChange("google-sku-attribution")}
+                    className={`relative mt-0.5 flex w-full items-center gap-2 rounded-md py-2 pl-8 pr-2.5 text-left text-xs font-medium transition-colors ${
+                      active === "google-sku-attribution"
+                        ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                        : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                    }`}
+                  >
+                    {active === "google-sku-attribution" && (
+                      <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full" style={{ background: PLATFORM_COLORS.google }} />
+                    )}
+                    <span className="truncate">↳ SKU Attribution</span>
+                  </button>
                 )}
               </div>
             );

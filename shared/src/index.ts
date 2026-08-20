@@ -565,6 +565,80 @@ export interface MetaSkuAttributionResponse {
   totalAds: number;
 }
 
+// --- Google SKU Attribution ------------------------------------------------
+//
+// Same Campaign > SKU drill-down idea as Meta's SKU Attribution above, but
+// EXACT rather than a name-tag guess: Google's Shopping/PMax campaigns
+// already report real per-product spend (fact_shopping_product_performance,
+// product_item_id = "shopify_zz_{productId}_{variantId}"), decoded and
+// joined straight to the matching Shopify variant's SKU -- no regex-on-
+// ad-name matching, no prefix-token ambiguity, no "+N more" variant
+// collisions. Two levels, not four: Shopping/PMax has no ad-group/ad
+// granularity in this data at all (a product-item row IS the leaf), so
+// there's no "Ad Set"/"Ad" tier to mirror -- Campaign > Product is the real
+// structure. Search/Display spend on the same account has ad-level data
+// (fact_ad_creative_performance) but no product match at all, so it's out
+// of scope here the same way it's out of scope for Meta's version.
+interface GoogleSkuPerformance {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpc: number | null;
+  cpa: number | null;
+  /** Clicked-item revenue, from fact_shopping_product_performance -- same
+   * "credited to the clicked product, not necessarily the purchased one"
+   * caveat as everywhere else this table is used. */
+  adsRevenue: number;
+  adsRoas: number | null;
+  /** Real Shopify line-item revenue for the matched SKU/variant over the
+   * same range -- exact, not a prefix-token estimate. Null (not 0) when
+   * the product_item_id didn't decode or nothing in Shopify matched. */
+  websiteRevenue: number | null;
+  websiteRoas: number | null;
+}
+
+export interface GoogleSkuProductRow extends GoogleSkuPerformance {
+  productItemId: string;
+  /** Google's own feed title for this item -- can differ slightly from the
+   * matched Shopify product's title (e.g. size/color baked into the feed
+   * title). */
+  productTitle: string | null;
+  /** Exact Shopify SKU for this product_item_id's variant, or null if it
+   * didn't decode/match. Unlike Meta's token, this is never a prefix guess. */
+  sku: string | null;
+}
+
+export interface GoogleSkuCampaignGroup extends GoogleSkuPerformance {
+  campaignId: string;
+  campaignName: string | null;
+  products: GoogleSkuProductRow[];
+}
+
+/** One row per distinct matched SKU, combining every product_item_id
+ * (usually just one, but a SKU can appear in more than one campaign) that
+ * resolved to it -- same "true combined spend, one honest ROAS" fix as
+ * Meta's MetaSkuGroupRow, just built from exact matches instead of
+ * token prefixes, so there's no variant-collision case to track here. */
+export interface GoogleSkuGroupRow extends GoogleSkuPerformance {
+  sku: string;
+  productTitle: string | null;
+  campaignCount: number;
+  productItemCount: number;
+}
+
+export interface GoogleSkuAttributionResponse {
+  from: string;
+  to: string;
+  campaigns: GoogleSkuCampaignGroup[];
+  /** Sorted by spend desc -- one row per distinct matched SKU. */
+  skuGroups: GoogleSkuGroupRow[];
+  matchedProductItems: number;
+  totalProductItems: number;
+}
+
 // --- Meta Creative Performance (per-creative naming-convention breakdown) --
 //
 // Meta-only, a second lens on the same ad-name-tagging idea as SKU

@@ -11,6 +11,7 @@ import { PlatformSection } from "./components/PlatformSection";
 import { ShopifySection } from "./components/ShopifySection";
 import { MetaSkuAttributionSection } from "./components/MetaSkuAttributionSection";
 import { MetaCreativePerformanceSection } from "./components/MetaCreativePerformanceSection";
+import { GoogleSkuAttributionSection } from "./components/GoogleSkuAttributionSection";
 import { ShopifyProductQuadrantsSection } from "./components/ShopifyProductQuadrantsSection";
 import { ProjectionSheetSection } from "./components/ProjectionSheetSection";
 import { SettingsSection } from "./components/SettingsSection";
@@ -156,6 +157,7 @@ function App() {
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
+  const isGoogleSkuAttribution = activeSelection === "google-sku-attribution";
   const isShopifyProductQuadrants = activeSelection === "shopify-product-quadrants";
   const isShopifyProjectionSheet = activeSelection === "shopify-projection-sheet";
   const isSettings = activeSelection === "settings";
@@ -168,7 +170,9 @@ function App() {
         ? // Derived entirely from Meta + Shopify's already-synced data -- no
           // sync of its own, so "last synced" reuses Meta's.
           (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
-        : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
+        : isGoogleSkuAttribution
+          ? (syncStatus?.platforms.find((s) => s.platform === "google")?.lastSync ?? null)
+          : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
 
   function handleSyncComplete() {
     setRefreshKey((k) => k + 1);
@@ -184,7 +188,7 @@ function App() {
   // on every ad-platform page (using the same global range), hidden on
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
   // lens on Meta specifically, one platform of the four this band spans).
-  const showSpendFlow = !isShopify && !isMetaSubView && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
+  const showSpendFlow = !isShopify && !isMetaSubView && !isGoogleSkuAttribution && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
   const title = isSettings
     ? "Settings"
     : isShopify
@@ -197,7 +201,9 @@ function App() {
             ? "Meta Ads — SKU Attribution"
             : isMetaCreativePerformance
               ? "Meta Ads — Creative Performance"
-              : PLATFORM_LABELS[activeSelection];
+              : isGoogleSkuAttribution
+                ? "Google Ads — SKU Attribution"
+                : PLATFORM_LABELS[activeSelection];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -238,7 +244,7 @@ function App() {
             </div>
           )}
 
-          {!isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && <AttributionBanner />}
+          {!isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && !isGoogleSkuAttribution && <AttributionBanner />}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -281,6 +287,8 @@ function App() {
             <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : isMetaCreativePerformance ? (
             <MetaCreativePerformanceSection key="meta-creative-performance" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
+          ) : isGoogleSkuAttribution ? (
+            <GoogleSkuAttributionSection key="google-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : (
             <PlatformSection
               key={activeSelection}

@@ -1176,6 +1176,24 @@ Build proceeds phase by phase per the project spec, committing after each.
       the date range dropdown earlier. index.css's governing design-system
       comment updated to match (glass is now reserved for dimmed-backdrop
       floating layers only -- the command palette, tooltips, the drawer).
+- [x] **Google Ads — SKU Attribution page** (2026-08-20), the Google
+      counterpart to Meta's SKU Attribution page, on explicit request. Unlike
+      Meta's ad-name-tag guess, Google's match is exact: Shopping/PMax
+      already reports real per-product spend in
+      `fact_shopping_product_performance` (`product_item_id =
+      "shopify_zz_{productId}_{variantId}"`), decoded via regex and joined
+      straight to the matching Shopify variant's SKU -- no name-tag ambiguity,
+      no "+N more" variant collisions. New `server/src/routes/
+      googleSkuAttribution.ts` (mirrors `metaSkuAttribution.ts`'s
+      rollup/grouping shape) and `GoogleSku*` types in `shared/src/index.ts`.
+      Two levels, not four -- Shopping/PMax has no ad-group/ad tier in this
+      data at all (a product-item row IS the leaf), so
+      `GoogleSkuAttributionSection.tsx` shows Campaign / Product / SKU (true
+      ROAS) tabs instead of Meta's four, reusing the same KPI-tiles + ranked
+      chart + drill-down-table layout. Nested under Google Ads in the sidebar
+      the same way Meta's sub-views are nested under Meta Ads. Verified live
+      against real synced data (91 matched SKUs, 623 product items) and via
+      Playwright screenshots in both themes.
 
 ## Structure
 
