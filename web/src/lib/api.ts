@@ -28,6 +28,8 @@ import type {
   ProjectionUpdateEntry,
   AiAskResponse,
   AiQueryHistoryResponse,
+  Ga4Status,
+  PredictiveAnalysisResponse,
 } from "@fig/shared";
 import { getStoredPassword } from "./sitePassword";
 
@@ -257,4 +259,31 @@ export async function askAi(question: string): Promise<AiAskResponse> {
 
 export function fetchAiHistory(): Promise<AiQueryHistoryResponse> {
   return getJSON(`/ai/history`);
+}
+
+// --- GA4 + Predictive Analysis (Shopify -> ↳ Predictive Analysis) ----------
+
+export function fetchGA4Status(): Promise<Ga4Status> {
+  return getJSON(`/ga4/status`);
+}
+
+export async function triggerGA4Sync(from: string, to: string): Promise<{ status: string; rows: number; error: string | null }> {
+  const res = await fetch(`${BASE}/ga4/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ from, to }),
+  });
+  return res.json();
+}
+
+export function fetchPredictiveAnalysis(): Promise<PredictiveAnalysisResponse> {
+  return getJSON(`/predictive-analysis`);
+}
+
+export async function runPredictiveAnalysisForecast(): Promise<{ ok: boolean; adSpendRows: number; shopifyRows: number }> {
+  const res = await fetch(`${BASE}/predictive-analysis/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+  });
+  return res.json();
 }

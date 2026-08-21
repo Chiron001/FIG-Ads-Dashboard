@@ -84,6 +84,13 @@ export function CommandPalette({ onNavigate, onSetRange, onClose }: Props) {
         icon: <ShopifyIcon size={16} />,
         run: () => onNavigate("shopify"),
       },
+      {
+        key: "nav-shopify-predictive",
+        label: "Shopify — Predictive Analysis",
+        hint: "Go to section",
+        icon: <ShopifyIcon size={16} />,
+        run: () => onNavigate("shopify-predictive-analysis"),
+      },
     ];
     const ranges: CommandItem[] = PRESET_ORDER.map((preset) => ({
       key: `range-${preset}`,

@@ -6,6 +6,8 @@ import { metricsRouter } from "./routes/metrics";
 import { syncRouter } from "./routes/sync";
 import { shopifyRouter } from "./routes/shopify";
 import { shopifyOauthRouter } from "./routes/shopifyOauth";
+import { ga4Router } from "./routes/ga4";
+import { predictiveAnalysisRouter } from "./routes/predictiveAnalysis";
 import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
 import { googleSkuAttributionRouter } from "./routes/googleSkuAttribution";
@@ -36,6 +38,12 @@ app.use("/sync", syncRouter);
 // always wins the match, regardless of route order inside shopifyRouter.
 app.use("/shopify/oauth", shopifyOauthRouter);
 app.use("/shopify", shopifyRouter);
+// GA4 channel/session cross-check -- stored history (fact_ga4_channel_daily),
+// unlike Shopify's own live-only ShopifyQL session queries. See routes/ga4.ts.
+app.use("/ga4", ga4Router);
+// Ad spend + Shopify revenue/orders/AOV/CVR forecasts -- see
+// routes/predictiveAnalysis.ts.
+app.use("/predictive-analysis", predictiveAnalysisRouter);
 // Meta ad spend cross-referenced against Shopify per-SKU revenue -- see
 // routes/metaSkuAttribution.ts. Its own top-level path (not nested under
 // /shopify or /metrics) since it genuinely reads from both.

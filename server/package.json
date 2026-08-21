@@ -12,6 +12,7 @@
     "google:auth": "tsx src/scripts/google-get-refresh-token.ts",
     "google:test": "tsx src/scripts/test-google-connector.ts",
     "meta:test": "tsx src/scripts/test-meta-connector.ts",
+    "ga4:test": "tsx src/scripts/test-ga4-connector.ts",
     "amazon:auth": "tsx src/scripts/amazon-get-refresh-token.ts",
     "shopify:test": "tsx src/scripts/test-shopify-connector.ts",
     "shopify:backfill": "tsx src/scripts/shopify-backfill.ts",
@@ -21,6 +22,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
     "@fig/shared": "*",
+    "@google-analytics/data": "^7.0.0",
     "@supabase/supabase-js": "^2.45.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

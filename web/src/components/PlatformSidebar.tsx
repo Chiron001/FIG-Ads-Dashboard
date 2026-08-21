@@ -12,10 +12,10 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
  * spend/campaigns, not in the shared Platform union), plus Meta's SKU
  * Attribution and Creative Performance sub-views and Google's SKU
  * Attribution sub-view (nested under their respective platforms in the
- * nav, not platforms of their own), plus Shopify's Product Quadrants and
- * Projection Sheet sub-views (nested under Shopify the same way), plus
- * Settings (app-wide config, its own top-level group -- not tied to any
- * one platform or Shopify). */
+ * nav, not platforms of their own), plus Shopify's Product Quadrants,
+ * Projection Sheet, and Predictive Analysis sub-views (nested under Shopify
+ * the same way), plus Settings (app-wide config, its own top-level group --
+ * not tied to any one platform or Shopify). */
 export type SidebarSelection =
   | "home"
   | Platform
@@ -25,6 +25,7 @@ export type SidebarSelection =
   | "google-sku-attribution"
   | "shopify-product-quadrants"
   | "shopify-projection-sheet"
+  | "shopify-predictive-analysis"
   | "settings";
 
 const SHOPIFY_COLOR = "#95BF47";
@@ -110,6 +111,15 @@ function TargetIcon({ size }: { size: number }) {
   );
 }
 
+function TrendIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      <path d="M2 12.5 6 8l3 2.5 5-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11 4.5h3v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function GearIcon({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
@@ -179,7 +189,7 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
     if (expandedGroups.has(group)) return true;
     if (group === "meta") return active === "meta-sku-attribution" || active === "meta-creative-performance";
     if (group === "google") return active === "google-sku-attribution";
-    return active === "shopify-product-quadrants" || active === "shopify-projection-sheet";
+    return active === "shopify-product-quadrants" || active === "shopify-projection-sheet" || active === "shopify-predictive-analysis";
   };
 
   // Picking a destination on mobile should also close the drawer -- it's
@@ -449,6 +459,16 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               >
                 <TargetIcon size={13} />
               </button>
+              <button
+                type="button"
+                title="Shopify — Predictive Analysis"
+                onClick={() => handleChange("shopify-predictive-analysis")}
+                className={`rounded-md p-1.5 transition-colors ${
+                  active === "shopify-predictive-analysis" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                }`}
+              >
+                <TrendIcon size={13} />
+              </button>
             </div>
           ) : (
             isGroupExpanded("shopify") && (
@@ -474,6 +494,17 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                   }`}
                 >
                   <span className="truncate">Projection Sheet</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChange("shopify-predictive-analysis")}
+                  className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    active === "shopify-predictive-analysis"
+                      ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                      : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                  }`}
+                >
+                  <span className="truncate">Predictive Analysis</span>
                 </button>
               </div>
             )

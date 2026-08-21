@@ -66,8 +66,10 @@ export type SyncStatus = "success" | "partial" | "error";
 
 export interface SyncLogEntry {
   id: string;
-  /** "shopify" isn't in Platform (it's not an ad platform -- see shopify.ts types below) but shares this same sync_log row shape. */
-  platform: Platform | "shopify";
+  /** "shopify"/"ga4" aren't in Platform (neither is an ad platform -- see
+   * shopify.ts types below and the GA4 section further down) but both share
+   * this same sync_log row shape. */
+  platform: Platform | "shopify" | "ga4";
   runAt: string; // ISO timestamptz
   status: SyncStatus;
   rows: number;
@@ -466,6 +468,38 @@ export interface ShopifyStatus {
   connected: boolean;
   lastSync: SyncLogEntry | null;
 }
+
+// --- GA4 (channel/session cross-check) --------------------------------------
+//
+// Separate from Shopify's own live-only ShopifyQL session data above --
+// GA4's report rows ARE stored historically (fact_ga4_channel_daily), since
+// the Predictive Analysis forecast needs a real time series, not a
+// per-request range total. Confirmed live against the real property: 16 raw
+// GA4 channel groups, collapsed in application code (server/src/lib/
+// ga4Channels.ts) into the 5 buckets below.
+
+export interface Ga4Status {
+  connected: boolean;
+  lastSync: SyncLogEntry | null;
+}
+
+/** The 5 collapsed channel buckets the forecast segments by -- GA4's raw
+ * 16-way sessionDefaultChannelGroup mapped down to these (ga4Channels.ts).
+ * "unassigned" is kept as its OWN bucket rather than folded into "other" --
+ * confirmed live it's often the single largest revenue bucket (~₹64L of
+ * ~₹293L in one 365-day window), so hiding it inside "other" would
+ * understate how much revenue has no attributable channel at all. */
+export type ChannelBucket = "paid" | "organic" | "direct" | "referral_email_other" | "unassigned";
+
+export const ALL_CHANNEL_BUCKETS: ChannelBucket[] = ["paid", "organic", "direct", "referral_email_other", "unassigned"];
+
+export const CHANNEL_BUCKET_LABELS: Record<ChannelBucket, string> = {
+  paid: "Paid",
+  organic: "Organic",
+  direct: "Direct",
+  referral_email_other: "Referral / Email / Other",
+  unassigned: "Unassigned",
+};
 
 // --- Meta SKU attribution (Ads ROAS vs Website ROAS) ------------------------
 //
@@ -1081,4 +1115,98 @@ export interface AiQueryHistoryEntry {
  * inline and the full list in a "show all" view. */
 export interface AiQueryHistoryResponse {
   entries: AiQueryHistoryEntry[];
+}
+
+// --- Predictive Analysis (Shopify -> ↳ Predictive Analysis) -----------------
+//
+// Ad spend AND Shopify revenue/orders/AOV/CVR forecasts, closing the loop
+// between ad input and business outcome. Both share one modeling contract
+// (server/src/lib/forecast.ts): a 7-day moving-average baseline, upgraded to
+// a linear-regression trend line only when r2 >= 0.3 -- the same reliability
+// floor the ads diminishing-returns model already uses (server/src/stats/
+// regression.ts). Confirmed against 97 days of real Shopify order history
+// before this was built: the trend line's r2 came back 0.036 (unreliable)
+// and the flat baseline won the backtest (16.9% MAPE vs 19.4%) -- isReliable
+// is returned explicitly so the UI can show *why* a forecast reads as a
+// flat line, not silently pick a model and hide the disagreement.
+//
+// One row per day for the next 30 days (not three separate 7/14/30 model
+// runs) -- the UI's 7/14/30 toggle just slices this same daily series,
+// which is also what the combined spend-vs-revenue chart needs (a
+// continuous timeline, not three disconnected points).
+//
+// Recomputed on demand (POST /predictive-analysis/run, also piggybacked
+// onto "Sync all") rather than a true OS-level cron -- this app has no
+// scheduler at all yet; standing one up is a separate infra decision.
+
+export type ForecastModel = "moving_average_7d" | "linear_regression";
+
+export interface ForecastAdSpendRow {
+  forecastDate: string; // YYYY-MM-DD
+  platform: Platform;
+  predictedSpend: number;
+  ciLow: number | null;
+  ciHigh: number | null;
+  modelUsed: ForecastModel;
+  r2: number | null;
+  isReliable: boolean;
+}
+
+export interface ForecastShopifyRow {
+  forecastDate: string;
+  /** "all" = every channel combined (Shopify's own ground-truth order
+   * total); otherwise one of the 5 GA4 channel buckets (GA4's own tracked
+   * revenue for that channel -- see the reconciliation note below). */
+  channel: ChannelBucket | "all";
+  predictedRevenue: number;
+  predictedOrders: number;
+  predictedAov: number | null;
+  predictedConversionRate: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+  modelUsed: ForecastModel;
+  r2: number | null;
+  isReliable: boolean;
+}
+
+/** GA4's channel-attributed revenue and Shopify's own ground-truth order
+ * revenue measure the same underlying sales through two different tracking
+ * systems, so they never match exactly -- exactly the kind of attribution
+ * gap flagged before this was built. Surfaced explicitly rather than
+ * silently picking one number, same spirit as the ad-platform reconciliation
+ * already elsewhere in this app. */
+export interface RevenueReconciliation {
+  from: string;
+  to: string;
+  shopifyRevenue: number;
+  ga4Revenue: number;
+  deviationPct: number | null;
+}
+
+export interface NewVsReturningBreakdown {
+  from: string;
+  to: string;
+  newCustomerOrders: number;
+  returningCustomerOrders: number;
+  newCustomerRevenue: number;
+  returningCustomerRevenue: number;
+}
+
+/** The "checkout funnel" signal surfacing in the numbers, not a chart the
+ * reader has to eyeball to notice -- flagged true when forecasted spend
+ * growth meaningfully outpaces forecasted revenue growth over the horizon
+ * (comparing the first vs. last week of the 30-day forecast series). */
+export interface FunnelLagFlag {
+  flagged: boolean;
+  spendGrowthPct: number | null;
+  revenueGrowthPct: number | null;
+}
+
+export interface PredictiveAnalysisResponse {
+  generatedAt: string;
+  adSpend: ForecastAdSpendRow[];
+  shopify: ForecastShopifyRow[];
+  reconciliation: RevenueReconciliation | null;
+  newVsReturning: NewVsReturningBreakdown | null;
+  funnelLag: FunnelLagFlag | null;
 }

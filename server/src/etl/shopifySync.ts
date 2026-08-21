@@ -18,6 +18,7 @@ async function upsertOrders(orders: CanonicalShopifyOrder[]): Promise<void> {
     "total_tax",
     "currency",
     "source_name",
+    "customer_id",
     "line_item_count",
     "raw",
   ] as const;
@@ -40,6 +41,7 @@ async function upsertOrders(orders: CanonicalShopifyOrder[]): Promise<void> {
         o.totalTax,
         o.currency,
         o.sourceName,
+        o.customerId,
         o.lineItemCount,
         JSON.stringify(o.raw)
       );
@@ -56,6 +58,7 @@ async function upsertOrders(orders: CanonicalShopifyOrder[]): Promise<void> {
          total_discounts = excluded.total_discounts,
          total_tax = excluded.total_tax,
          source_name = excluded.source_name,
+         customer_id = excluded.customer_id,
          line_item_count = excluded.line_item_count,
          raw = excluded.raw,
          ingested_at = now()`,

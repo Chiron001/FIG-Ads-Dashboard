@@ -74,6 +74,22 @@ export const env = {
     clientSecret: optional("SHOPIFY_CLIENT_SECRET"),
   },
 
+  ga4: {
+    propertyId: optional("GA4_PROPERTY_ID"),
+    // Service account JSON key, base64-encoded (see .env.example) -- decoded
+    // once here rather than in the connector, so a malformed value fails
+    // loudly at startup instead of on the first live request.
+    serviceAccountKey: (() => {
+      const b64 = optional("GA4_SERVICE_ACCOUNT_KEY_BASE64");
+      if (!b64) return undefined;
+      try {
+        return JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as { client_email: string; private_key: string };
+      } catch {
+        throw new Error("GA4_SERVICE_ACCOUNT_KEY_BASE64 is set but isn't valid base64-encoded JSON.");
+      }
+    })(),
+  },
+
   // Campaign-table economics (Break-even ROAS, Profit, Verdict). The UI
   // reads these once as a starting point and lets the analyst override
   // live -- these are just the server-side defaults.

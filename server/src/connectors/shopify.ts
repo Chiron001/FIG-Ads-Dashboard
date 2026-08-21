@@ -37,6 +37,11 @@ interface ShopifyRawOrder {
   currentTotalDiscountsSet: ShopifyMoneySet;
   currentTotalTaxSet: ShopifyMoneySet;
   sourceName: string | null;
+  // Opaque Shopify customer id (gid://shopify/Customer/...), null for guest
+  // checkouts -- NOT name/email/phone, see db/migrations/0011's comment.
+  // Used only to compute new-vs-returning for the Predictive Analysis
+  // forecast (Nth order for a given id).
+  customer: { id: string } | null;
   lineItems: { edges: { node: ShopifyRawLineItem }[] };
 }
 
@@ -51,6 +56,7 @@ export interface CanonicalShopifyOrder {
   totalTax: number;
   currency: string | null;
   sourceName: string | null;
+  customerId: string | null;
   lineItemCount: number;
   raw: Record<string, unknown>;
 }
@@ -88,6 +94,7 @@ const ORDERS_QUERY = `
           currentTotalDiscountsSet { shopMoney { amount currencyCode } }
           currentTotalTaxSet { shopMoney { amount currencyCode } }
           sourceName
+          customer { id }
           lineItems(first: 100) {
             edges {
               node {
@@ -530,6 +537,7 @@ export class ShopifyConnector {
         totalTax: Number(order.currentTotalTaxSet.shopMoney.amount),
         currency: order.currentTotalPriceSet.shopMoney.currencyCode,
         sourceName: order.sourceName,
+        customerId: order.customer?.id ?? null,
         lineItemCount: lineItemNodes.length,
         raw: order as unknown as Record<string, unknown>,
       });

@@ -1237,6 +1237,62 @@ Build proceeds phase by phase per the project spec, committing after each.
       hidden with no visible indication of where you are. Collapsed
       (icon-only) sidebar mode is unaffected -- its sub-items were already
       compact icon buttons, always visible regardless. `PlatformSidebar.tsx`.
+- [x] **Predictive Analysis: ad spend + Shopify revenue forecast, closing
+      the ad-to-sales loop** (2026-08-22), new Shopify sub-section. Investigated
+      first, per explicit request: no "ads forecast module" existed to extend
+      (no forecast tables, no scheduler at all -- confirmed by repo-wide
+      search), Shopify order data has no UTM/channel/customer fields (a
+      deliberate no-PII design from day one), and no GA4 integration existed
+      either -- all built from scratch this round, in stages, with a live
+      validation gate before each one:
+      - **GA4 connector** (new, `server/src/connectors/ga4.ts`,
+        `@google-analytics/data`), service-account auth (key added from
+        `.env`, base64-encoded, never logged). Confirmed live against the
+        real property: 4,626 (date, channel) rows, 365 days of history, 16
+        real GA4 channel groups, ecommerce tracking active (₹2.93 Cr
+        revenue, 7,275 transactions in-window). Collapsed to 5 buckets for
+        readability (`server/src/lib/ga4Channels.ts`): Paid, Organic,
+        Direct, Referral/Email/Other, Unassigned -- kept as its own bucket
+        rather than folded into "Other" since it's often the single
+        *largest* revenue bucket (~₹64L of ~₹293L in one window), not a
+        rounding error. Stored historically (`fact_ga4_channel_daily`,
+        `db/migrations/0011`), unlike Shopify's own live-only ShopifyQL
+        session queries, since forecasting needs a real time series.
+      - **`customer_id`** added to `fact_shopify_orders` (opaque Shopify
+        customer id, NOT name/email/phone) to compute new-vs-returning --
+        backfilled across all 3,205 existing orders, 100% coverage, 2,995
+        unique customers.
+      - **Forecast model** (`server/src/lib/forecast.ts`): 7-day moving
+        average baseline, upgraded to a linear-regression trend line only
+        when r² >= 0.3 -- the same reliability floor the ads
+        diminishing-returns model already used. Validated against 97 days
+        of real Shopify order history BEFORE any schema/pipeline was built
+        (per explicit request): the naive trend line lost the backtest to
+        the flat baseline (r²=0.036, 19.4% MAPE vs. the flat baseline's
+        16.9%), confirming the reliability gate does real work, not just
+        theoretical hygiene.
+      - **Storage**: `forecast_ad_spend` and `forecast_shopify_performance`
+        (`db/migrations/0011`), full-replace on every run (a plain upsert
+        was tried first and confirmed live to leave stale out-of-range
+        dates behind whenever the forecast window shifts). Recomputed via
+        `POST /predictive-analysis/run`, piggybacked onto the existing
+        "Sync all" button -- no real scheduler exists in this app yet, and
+        standing one up (e.g. a Railway Cron Job) is a separate,
+        deliberately deferred infra decision.
+      - **UI** (`PredictiveAnalysisSection.tsx`): a "Spend vs. Revenue
+        Forecast" chart indexed to 100 at day 1 (never dual-axis -- spend
+        and revenue are on very different scales, and overlaying raw ₹ on
+        two y-axes can make any two lines look correlated by construction),
+        a funnel-lag flag (spend growth meaningfully outpacing revenue
+        growth), a GA4-vs-Shopify revenue reconciliation card (confirmed
+        live: a real 25.4% gap in one 30-day window -- large tracking loss,
+        not a bug), a new-vs-returning card (6.6% repeat-purchase rate
+        observed), a channel breakdown table, and a 7/14/30-day daily table
+        with export. Verified live end-to-end (including a real date-
+        alignment bug caught and fixed: ad spend and Shopify order data
+        don't always sync through the same calendar day, which silently
+        offset the two forecast series by a day until every series was
+        anchored to one shared start date) and in both themes.
 
 ## Structure
 

@@ -3,7 +3,16 @@ import type { Platform, SyncStatusResponse, ShopifyStatus } from "@fig/shared";
 import { ALL_PLATFORMS, PLATFORM_LABELS } from "@fig/shared";
 import { presetRange, type DateRange } from "./lib/dateRanges";
 import { type ComparisonMode } from "./lib/comparisonRange";
-import { fetchSyncStatus, fetchConfig, fetchSettings, fetchShopifyStatus, triggerSync, triggerShopifySync } from "./lib/api";
+import {
+  fetchSyncStatus,
+  fetchConfig,
+  fetchSettings,
+  fetchShopifyStatus,
+  triggerSync,
+  triggerShopifySync,
+  triggerGA4Sync,
+  runPredictiveAnalysisForecast,
+} from "./lib/api";
 import { TopBar } from "./components/TopBar";
 import { AttributionBanner } from "./components/AttributionBanner";
 import { PlatformSidebar, type SidebarSelection } from "./components/PlatformSidebar";
@@ -15,6 +24,7 @@ import { MetaCreativePerformanceSection } from "./components/MetaCreativePerform
 import { GoogleSkuAttributionSection } from "./components/GoogleSkuAttributionSection";
 import { ShopifyProductQuadrantsSection } from "./components/ShopifyProductQuadrantsSection";
 import { ProjectionSheetSection } from "./components/ProjectionSheetSection";
+import { PredictiveAnalysisSection } from "./components/PredictiveAnalysisSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { SpendFlowBand } from "./components/SpendFlowBand";
 import { CommandPalette } from "./components/CommandPalette";
@@ -144,10 +154,23 @@ function App() {
 
     setSyncingAll(true);
     try {
+      // GA4 always attempted (not gated on a tracked "connected" flag the
+      // way ad platforms/Shopify are) -- runGA4Sync already fails gracefully
+      // into sync_log if it isn't configured, same as any other platform
+      // would if its credentials were missing, and Promise.allSettled
+      // tolerates it either way. Fixed 90-day window, not the top-bar's
+      // range -- GA4 here feeds the forecast's training history, not
+      // whatever short range happens to be selected for viewing.
+      const ga4From = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+      const ga4To = new Date().toISOString().slice(0, 10);
       await Promise.allSettled([
         ...adPlatforms.map((p) => triggerSync(p, range.from, range.to)),
         ...(syncShopify ? [triggerShopifySync(range.from, range.to)] : []),
+        triggerGA4Sync(ga4From, ga4To),
       ]);
+      // Piggybacked onto "Sync all" rather than a separate scheduler --
+      // see PredictiveAnalysisResponse's header comment in shared/src/index.ts.
+      await runPredictiveAnalysisForecast().catch(() => {});
     } finally {
       setSyncingAll(false);
       setRefreshKey((k) => k + 1);
@@ -174,11 +197,12 @@ function App() {
   const isGoogleSkuAttribution = activeSelection === "google-sku-attribution";
   const isShopifyProductQuadrants = activeSelection === "shopify-product-quadrants";
   const isShopifyProjectionSheet = activeSelection === "shopify-projection-sheet";
+  const isShopifyPredictiveAnalysis = activeSelection === "shopify-predictive-analysis";
   const isSettings = activeSelection === "settings";
   const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
   const lastSync = isHome || isSettings
     ? null // Home has no sync of its own (reads already-synced data); Settings is app-wide config, not synced data
-    : isShopify || isShopifyProductQuadrants || isShopifyProjectionSheet
+    : isShopify || isShopifyProductQuadrants || isShopifyProjectionSheet || isShopifyPredictiveAnalysis
       ? (shopifyStatus?.lastSync ?? null)
       : isMetaSubView
         ? // Derived entirely from Meta + Shopify's already-synced data -- no
@@ -203,7 +227,14 @@ function App() {
   // Shopify (no ad spend at all) and the two Meta sub-views (already a
   // lens on Meta specifically, one platform of the four this band spans).
   const showSpendFlow =
-    !isHome && !isShopify && !isMetaSubView && !isGoogleSkuAttribution && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings;
+    !isHome &&
+    !isShopify &&
+    !isMetaSubView &&
+    !isGoogleSkuAttribution &&
+    !isShopifyProductQuadrants &&
+    !isShopifyProjectionSheet &&
+    !isShopifyPredictiveAnalysis &&
+    !isSettings;
   const title = isHome
     ? "Home"
     : isSettings
@@ -214,13 +245,15 @@ function App() {
         ? "Shopify — Product Quadrants"
         : isShopifyProjectionSheet
           ? "Shopify — Projection Sheet"
-          : isMetaSkuAttribution
-            ? "Meta Ads — SKU Attribution"
-            : isMetaCreativePerformance
-              ? "Meta Ads — Creative Performance"
-              : isGoogleSkuAttribution
-                ? "Google Ads — SKU Attribution"
-                : PLATFORM_LABELS[activeSelection as Platform];
+          : isShopifyPredictiveAnalysis
+            ? "Shopify — Predictive Analysis"
+            : isMetaSkuAttribution
+              ? "Meta Ads — SKU Attribution"
+              : isMetaCreativePerformance
+                ? "Meta Ads — Creative Performance"
+                : isGoogleSkuAttribution
+                  ? "Google Ads — SKU Attribution"
+                  : PLATFORM_LABELS[activeSelection as Platform];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -261,9 +294,13 @@ function App() {
             </div>
           )}
 
-          {!isHome && !isShopify && !isShopifyProductQuadrants && !isShopifyProjectionSheet && !isSettings && !isGoogleSkuAttribution && (
-            <AttributionBanner />
-          )}
+          {!isHome &&
+            !isShopify &&
+            !isShopifyProductQuadrants &&
+            !isShopifyProjectionSheet &&
+            !isShopifyPredictiveAnalysis &&
+            !isSettings &&
+            !isGoogleSkuAttribution && <AttributionBanner />}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -304,6 +341,8 @@ function App() {
             />
           ) : isShopifyProjectionSheet ? (
             <ProjectionSheetSection key="shopify-projection-sheet" connected={shopifyStatus?.connected ?? false} />
+          ) : isShopifyPredictiveAnalysis ? (
+            <PredictiveAnalysisSection key="shopify-predictive-analysis" />
           ) : isMetaSkuAttribution ? (
             <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : isMetaCreativePerformance ? (
