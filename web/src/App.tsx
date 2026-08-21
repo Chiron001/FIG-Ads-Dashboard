@@ -25,6 +25,7 @@ import { GoogleSkuAttributionSection } from "./components/GoogleSkuAttributionSe
 import { ShopifyProductQuadrantsSection } from "./components/ShopifyProductQuadrantsSection";
 import { ProjectionSheetSection } from "./components/ProjectionSheetSection";
 import { PredictiveAnalysisSection } from "./components/PredictiveAnalysisSection";
+import { CampaignForecastSection } from "./components/CampaignForecastSection";
 import { SettingsSection } from "./components/SettingsSection";
 import { SpendFlowBand } from "./components/SpendFlowBand";
 import { CommandPalette } from "./components/CommandPalette";
@@ -194,21 +195,24 @@ function App() {
   const isShopify = activeSelection === "shopify";
   const isMetaSkuAttribution = activeSelection === "meta-sku-attribution";
   const isMetaCreativePerformance = activeSelection === "meta-creative-performance";
+  const isMetaPredictiveAnalysis = activeSelection === "meta-predictive-analysis";
   const isGoogleSkuAttribution = activeSelection === "google-sku-attribution";
+  const isGooglePredictiveAnalysis = activeSelection === "google-predictive-analysis";
   const isShopifyProductQuadrants = activeSelection === "shopify-product-quadrants";
   const isShopifyProjectionSheet = activeSelection === "shopify-projection-sheet";
   const isShopifyPredictiveAnalysis = activeSelection === "shopify-predictive-analysis";
   const isSettings = activeSelection === "settings";
-  const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance;
+  const isMetaSubView = isMetaSkuAttribution || isMetaCreativePerformance || isMetaPredictiveAnalysis;
+  const isGoogleSubView = isGoogleSkuAttribution || isGooglePredictiveAnalysis;
   const lastSync = isHome || isSettings
     ? null // Home has no sync of its own (reads already-synced data); Settings is app-wide config, not synced data
     : isShopify || isShopifyProductQuadrants || isShopifyProjectionSheet || isShopifyPredictiveAnalysis
       ? (shopifyStatus?.lastSync ?? null)
       : isMetaSubView
-        ? // Derived entirely from Meta + Shopify's already-synced data -- no
-          // sync of its own, so "last synced" reuses Meta's.
+        ? // Derived entirely from Meta's already-synced data -- no sync of
+          // its own, so "last synced" reuses Meta's.
           (syncStatus?.platforms.find((s) => s.platform === "meta")?.lastSync ?? null)
-        : isGoogleSkuAttribution
+        : isGoogleSubView
           ? (syncStatus?.platforms.find((s) => s.platform === "google")?.lastSync ?? null)
           : (syncStatus?.platforms.find((s) => s.platform === activeSelection)?.lastSync ?? null);
 
@@ -230,7 +234,7 @@ function App() {
     !isHome &&
     !isShopify &&
     !isMetaSubView &&
-    !isGoogleSkuAttribution &&
+    !isGoogleSubView &&
     !isShopifyProductQuadrants &&
     !isShopifyProjectionSheet &&
     !isShopifyPredictiveAnalysis &&
@@ -251,9 +255,13 @@ function App() {
               ? "Meta Ads — SKU Attribution"
               : isMetaCreativePerformance
                 ? "Meta Ads — Creative Performance"
-                : isGoogleSkuAttribution
-                  ? "Google Ads — SKU Attribution"
-                  : PLATFORM_LABELS[activeSelection as Platform];
+                : isMetaPredictiveAnalysis
+                  ? "Meta Ads — Predictive Analysis"
+                  : isGoogleSkuAttribution
+                    ? "Google Ads — SKU Attribution"
+                    : isGooglePredictiveAnalysis
+                      ? "Google Ads — Predictive Analysis"
+                      : PLATFORM_LABELS[activeSelection as Platform];
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
@@ -300,7 +308,9 @@ function App() {
             !isShopifyProjectionSheet &&
             !isShopifyPredictiveAnalysis &&
             !isSettings &&
-            !isGoogleSkuAttribution && <AttributionBanner />}
+            !isGoogleSkuAttribution &&
+            !isMetaPredictiveAnalysis &&
+            !isGooglePredictiveAnalysis && <AttributionBanner />}
 
           {showSpendFlow && (
             <div className="animate-fade-slide-in" style={{ animationDelay: "40ms" }}>
@@ -347,8 +357,12 @@ function App() {
             <MetaSkuAttributionSection key="meta-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
           ) : isMetaCreativePerformance ? (
             <MetaCreativePerformanceSection key="meta-creative-performance" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
+          ) : isMetaPredictiveAnalysis ? (
+            <CampaignForecastSection key="meta-predictive-analysis" platform="meta" />
           ) : isGoogleSkuAttribution ? (
             <GoogleSkuAttributionSection key="google-sku-attribution" range={range} refreshKey={refreshKey} targetRoas={targetRoas} />
+          ) : isGooglePredictiveAnalysis ? (
+            <CampaignForecastSection key="google-predictive-analysis" platform="google" />
           ) : (
             // Every non-Platform SidebarSelection is handled by a branch
             // above -- what's left here is always a real Platform, this

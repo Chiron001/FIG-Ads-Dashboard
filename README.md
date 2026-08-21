@@ -1293,6 +1293,61 @@ Build proceeds phase by phase per the project spec, committing after each.
         don't always sync through the same calendar day, which silently
         offset the two forecast series by a day until every series was
         anchored to one shared start date) and in both themes.
+- [x] **Predictive Analysis under Google Ads and Meta Ads: per-campaign
+      spend/revenue/ROAS/conversions forecast** (2026-08-22). Investigated
+      first, per explicit request: confirmed the stack (Express + TS /
+      Postgres / React + Vite + Recharts, Railway + Vercel), reviewed
+      `fact_ad_performance`'s schema, and queried real history depth before
+      proposing anything -- no platform has 90+ days yet (Google/Meta both
+      68 days), and campaign-level history is far thinner than platform-
+      level (Google: 9 campaigns, 0 with 90+ days; Meta: 32 campaigns, 0
+      with 90+ days, 6 under 14 days) -- ruling out ARIMA/Prophet-style
+      modeling entirely, per the user's own stated rule.
+      - **Real backtest before writing any pipeline code**, using the exact
+        forecasting module already built for the Shopify Predictive
+        Analysis page (`server/src/lib/forecast.ts`), not a
+        reimplementation: campaign-level r² came back near zero in every
+        case (0.008-0.028, vs. a strong 0.70 on the platform-level
+        aggregate) -- MAPE 43-158%. The Google campaign's actual daily
+        spend in the holdout alternated between ₹0 and ~₹1,140 (a real
+        intermittent/weekday-only pattern), which a flat/linear model
+        can't represent day-by-day. This shaped the whole UI: horizon
+        **totals** (day-to-day noise partially cancels in a sum) are the
+        headline numbers, individual daily points are shown for context
+        only, confirmed with the user before implementing.
+      - **Schema**: extended (not duplicated) `forecast_ad_spend`
+        (`db/migrations/0013`) with `campaign_id` (sentinel `'all'` for the
+        existing platform-total row, a real id for a per-campaign row),
+        `campaign_name`, `predicted_revenue`, `predicted_roas`,
+        `predicted_conversions`. One pipeline serves both the Shopify
+        page's platform-total view and the new per-campaign pages -- the
+        platform-total row is still its own independent regression on the
+        platform aggregate, never derived by summing the noisier
+        per-campaign rows.
+      - **Campaigns under 7 days of history are omitted entirely**, not
+        shown with a guess (2 Meta campaigns skipped live: "DIG - Rakhi -
+        CP", "DIG - Rakhi - PDP", both 2 days old) -- surfaced in the UI as
+        an explicit count + list, not a silent gap.
+      - **"Predicted vs. Actual" accuracy, made possible by a real fix**:
+        the existing full-wipe-and-replace-on-recompute behavior would have
+        destroyed yesterday's forecast before it could ever be compared to
+        what actually happened. Changed `runForecast()` to only replace the
+        forward-looking window (`forecast_date >= tomorrow`) -- past
+        forecast dates are now deliberately preserved once they've passed,
+        the same fix applied to `forecast_shopify_performance` for
+        consistency. The accuracy widget shows once >= 3 days of real
+        forecast-vs-actual overlap exist; before that, an honest "not
+        enough forecast history yet."
+      - **UI**: new "Predictive Analysis" sub-pages under both Google Ads
+        and Meta Ads (`CampaignForecastSection.tsx`, `CampaignForecastChart.tsx`),
+        each with a 7/14/30-day horizon toggle, KPI totals, a per-campaign
+        table (spend/revenue/ROAS/reliability badge), and a click-to-select
+        forecast chart -- solid actual line continuing into a dashed
+        predicted line with a shaded confidence band, added alongside
+        (not replacing) the existing plain performance charts. Verified
+        live in both themes: Google's top campaign showed a genuinely
+        reliable trend fit (r²=0.38) while Meta's showed the honest flat
+        baseline with a wide band, matching what the backtest predicted.
 
 ## Structure
 

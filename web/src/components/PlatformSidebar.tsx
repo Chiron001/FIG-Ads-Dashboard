@@ -10,19 +10,22 @@ import { ShopifyIcon } from "./icons/ShopifyIcon";
  * landing page, its own top-level entry, first in the nav and the app's
  * default view), the 4 ad platforms, plus Shopify (not an ad platform -- no
  * spend/campaigns, not in the shared Platform union), plus Meta's SKU
- * Attribution and Creative Performance sub-views and Google's SKU
- * Attribution sub-view (nested under their respective platforms in the
- * nav, not platforms of their own), plus Shopify's Product Quadrants,
- * Projection Sheet, and Predictive Analysis sub-views (nested under Shopify
- * the same way), plus Settings (app-wide config, its own top-level group --
- * not tied to any one platform or Shopify). */
+ * Attribution, Creative Performance, and Predictive Analysis sub-views and
+ * Google's SKU Attribution and Predictive Analysis sub-views (nested under
+ * their respective platforms in the nav, not platforms of their own), plus
+ * Shopify's Product Quadrants, Projection Sheet, and Predictive Analysis
+ * sub-views (nested under Shopify the same way), plus Settings (app-wide
+ * config, its own top-level group -- not tied to any one platform or
+ * Shopify). */
 export type SidebarSelection =
   | "home"
   | Platform
   | "shopify"
   | "meta-sku-attribution"
   | "meta-creative-performance"
+  | "meta-predictive-analysis"
   | "google-sku-attribution"
+  | "google-predictive-analysis"
   | "shopify-product-quadrants"
   | "shopify-projection-sheet"
   | "shopify-predictive-analysis"
@@ -187,8 +190,8 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
   // you are.
   const isGroupExpanded = (group: SubNavGroup): boolean => {
     if (expandedGroups.has(group)) return true;
-    if (group === "meta") return active === "meta-sku-attribution" || active === "meta-creative-performance";
-    if (group === "google") return active === "google-sku-attribution";
+    if (group === "meta") return active === "meta-sku-attribution" || active === "meta-creative-performance" || active === "meta-predictive-analysis";
+    if (group === "google") return active === "google-sku-attribution" || active === "google-predictive-analysis";
     return active === "shopify-product-quadrants" || active === "shopify-projection-sheet" || active === "shopify-predictive-analysis";
   };
 
@@ -332,6 +335,16 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     >
                       <FilmIcon size={13} />
                     </button>
+                    <button
+                      type="button"
+                      title="Meta Ads — Predictive Analysis"
+                      onClick={() => handleChange("meta-predictive-analysis")}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        active === "meta-predictive-analysis" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <TrendIcon size={13} />
+                    </button>
                   </div>
                 )}
                 {platform === "meta" && !collapsed && expanded && (
@@ -358,6 +371,17 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     >
                       <span className="truncate">Creative Performance</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => handleChange("meta-predictive-analysis")}
+                      className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                        active === "meta-predictive-analysis"
+                          ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                          : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <span className="truncate">Predictive Analysis</span>
+                    </button>
                   </div>
                 )}
 
@@ -376,6 +400,16 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                     >
                       <TagIcon size={13} />
                     </button>
+                    <button
+                      type="button"
+                      title="Google Ads — Predictive Analysis"
+                      onClick={() => handleChange("google-predictive-analysis")}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        active === "google-predictive-analysis" ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]" : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <TrendIcon size={13} />
+                    </button>
                   </div>
                 )}
                 {platform === "google" && !collapsed && expanded && (
@@ -390,6 +424,17 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       }`}
                     >
                       <span className="truncate">SKU Attribution</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleChange("google-predictive-analysis")}
+                      className={`flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                        active === "google-predictive-analysis"
+                          ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-ink-primary)]"
+                          : "text-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+                      }`}
+                    >
+                      <span className="truncate">Predictive Analysis</span>
                     </button>
                   </div>
                 )}

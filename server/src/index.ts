@@ -8,6 +8,7 @@ import { shopifyRouter } from "./routes/shopify";
 import { shopifyOauthRouter } from "./routes/shopifyOauth";
 import { ga4Router } from "./routes/ga4";
 import { predictiveAnalysisRouter } from "./routes/predictiveAnalysis";
+import { campaignForecastRouter } from "./routes/campaignForecast";
 import { statsRouter } from "./routes/stats";
 import { metaSkuAttributionRouter } from "./routes/metaSkuAttribution";
 import { googleSkuAttributionRouter } from "./routes/googleSkuAttribution";
@@ -44,6 +45,11 @@ app.use("/ga4", ga4Router);
 // Ad spend + Shopify revenue/orders/AOV/CVR forecasts -- see
 // routes/predictiveAnalysis.ts.
 app.use("/predictive-analysis", predictiveAnalysisRouter);
+// Per-campaign ad spend/revenue/ROAS forecast for the Google Ads/Meta Ads
+// "Predictive Analysis" sub-pages -- read-only view over the same
+// forecast_ad_spend table/recompute action as the line above. See
+// routes/campaignForecast.ts.
+app.use("/campaign-forecast", campaignForecastRouter);
 // Meta ad spend cross-referenced against Shopify per-SKU revenue -- see
 // routes/metaSkuAttribution.ts. Its own top-level path (not nested under
 // /shopify or /metrics) since it genuinely reads from both.

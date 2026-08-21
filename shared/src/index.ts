@@ -1144,12 +1144,89 @@ export type ForecastModel = "moving_average_7d" | "linear_regression";
 export interface ForecastAdSpendRow {
   forecastDate: string; // YYYY-MM-DD
   platform: Platform;
+  /** "all" = the platform-total row (spend-only, its own independent
+   * regression on the platform-level aggregate -- not a sum of the
+   * per-campaign rows below, which are each individually noisier). A real
+   * campaign id = that campaign's own forecast, computed independently. */
+  campaignId: string;
+  campaignName: string | null;
   predictedSpend: number;
+  /** Null for campaignId="all" rows (platform-total forecast stays
+   * spend-only, unchanged since this table's original version). */
+  predictedRevenue: number | null;
+  /** predictedRevenue / predictedSpend -- derived, not independently
+   * forecast (same principle as the Shopify forecast's predictedAov). */
+  predictedRoas: number | null;
+  predictedConversions: number | null;
   ciLow: number | null;
   ciHigh: number | null;
   modelUsed: ForecastModel;
   r2: number | null;
   isReliable: boolean;
+}
+
+// --- Campaign-level forecast (Google Ads / Meta Ads -> ↳ Predictive
+// Analysis) -----------------------------------------------------------------
+//
+// Same forecast_ad_spend table/modeling contract as the platform-total row
+// above, at campaign grain. Validated against real campaign data before
+// being built: per-campaign r2 was near zero in every backtest (campaigns
+// have far less history AND real on/off scheduling patterns a flat/linear
+// model can't capture) -- MAPE came back 43-158%, versus a strong 0.70 r2
+// on the platform-level aggregate. Horizon TOTALS (sum over the window,
+// where day-to-day noise partially cancels) are the headline numbers in the
+// UI for this reason, not individual daily points -- see
+// CampaignForecastGroup.horizonTotals.
+
+export interface CampaignForecastActualPoint {
+  date: string;
+  spend: number;
+  revenue: number;
+  conversions: number;
+}
+
+export interface CampaignHorizonTotals {
+  horizonDays: number;
+  totalSpend: number;
+  totalRevenue: number | null;
+  roas: number | null;
+  totalConversions: number | null;
+}
+
+/** Once a forecast_date has passed, its row is preserved (not wiped on the
+ * next recompute -- see forecast_ad_spend's migration comment) so it can be
+ * compared against what actually happened. Only populated once at least 3
+ * days of forecast-vs-actual overlap exist; null before that ("not enough
+ * forecast history yet"), not a misleading 1-day comparison. */
+export interface CampaignForecastAccuracy {
+  daysCompared: number;
+  spendMapePct: number | null;
+  revenueMapePct: number | null;
+}
+
+export interface CampaignForecastGroup {
+  campaignId: string;
+  campaignName: string | null;
+  platform: Platform;
+  historyDays: number;
+  /** Trailing actual history for the chart's solid line -- roughly the
+   * last 30 days actually synced, not the campaign's entire lifetime. */
+  recentActual: CampaignForecastActualPoint[];
+  forecast: ForecastAdSpendRow[];
+  /** One entry per horizon (7/14/30-day), in that order. */
+  horizonTotals: CampaignHorizonTotals[];
+  accuracy: CampaignForecastAccuracy | null;
+}
+
+export interface CampaignForecastResponse {
+  platform: Platform;
+  generatedAt: string;
+  /** Campaigns with < 7 days of history are omitted entirely, not shown
+   * with a misleading forecast -- minCampaignHistoryDays/skippedCampaigns
+   * make that omission visible rather than silent. */
+  minCampaignHistoryDays: number;
+  skippedCampaigns: { campaignId: string; campaignName: string | null; historyDays: number }[];
+  campaigns: CampaignForecastGroup[];
 }
 
 export interface ForecastShopifyRow {

@@ -78,6 +78,20 @@ export function CommandPalette({ onNavigate, onSetRange, onClose }: Props) {
         run: () => onNavigate("meta-creative-performance"),
       },
       {
+        key: "nav-google-predictive",
+        label: "Google Ads — Predictive Analysis",
+        hint: "Go to section",
+        icon: <PlatformIcon platform="google" size={16} />,
+        run: () => onNavigate("google-predictive-analysis"),
+      },
+      {
+        key: "nav-meta-predictive",
+        label: "Meta Ads — Predictive Analysis",
+        hint: "Go to section",
+        icon: <PlatformIcon platform="meta" size={16} />,
+        run: () => onNavigate("meta-predictive-analysis"),
+      },
+      {
         key: "nav-shopify",
         label: "Shopify",
         hint: "Go to section",

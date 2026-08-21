@@ -22,6 +22,11 @@ const HORIZON_DAYS = 30;
 // noise, short enough to reflect current tracking health rather than a
 // stale average over the whole history.
 const RECONCILIATION_WINDOW_DAYS = 30;
+// Below this, a campaign's own daily history is too thin for even a flat
+// moving-average baseline to mean anything -- matches the 7-day MA window
+// itself (see forecast.ts). Confirmed live before choosing this: several
+// real campaigns sit right at this edge (3 Google, 6 Meta under 14 days).
+export const MIN_CAMPAIGN_HISTORY_DAYS = 7;
 
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -73,12 +78,91 @@ async function computeAdSpendForecast(): Promise<ForecastAdSpendRow[]> {
       out.push({
         forecastDate: p.forecastDate,
         platform,
+        campaignId: "all",
+        campaignName: null,
         predictedSpend: p.predictedValue,
+        predictedRevenue: null,
+        predictedRoas: null,
+        predictedConversions: null,
         ciLow: p.ciLow,
         ciHigh: p.ciHigh,
         modelUsed: p.modelUsed,
         r2: p.r2,
         isReliable: p.isReliable,
+      });
+    }
+  }
+  out.push(...(await computeCampaignForecast(startDate)));
+  return out;
+}
+
+/** Per-campaign spend/revenue/conversions forecast -- independent of the
+ * platform-total rows above (never derived by summing these, see
+ * forecast_ad_spend's migration comment for why: campaigns individually
+ * have far less history and noisier r2 than the platform aggregate).
+ * Validated against real data before being built: campaign-level r2 was
+ * near zero in every backtest (0.008-0.028), so almost every campaign
+ * forecast is the flat baseline, not a trend line -- expected, not a bug.
+ * Skips campaigns under MIN_CAMPAIGN_HISTORY_DAYS entirely. */
+async function computeCampaignForecast(startDate: string): Promise<ForecastAdSpendRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select date::text as date, platform::text as platform, campaign_id, max(campaign_name) as campaign_name,
+            coalesce(sum(spend),0)::float8 as spend, coalesce(sum(revenue),0)::float8 as revenue,
+            coalesce(sum(conversions),0)::float8 as conversions
+     from fact_ad_performance
+     where platform::text = any($1::text[]) and campaign_id is not null
+     group by date, platform, campaign_id
+     order by date asc`,
+    [ALL_PLATFORMS]
+  );
+
+  interface CampaignKey {
+    platform: Platform;
+    campaignId: string;
+    campaignName: string | null;
+  }
+  const byCampaign = new Map<string, { key: CampaignKey; spend: { date: string; value: number }[]; revenue: { date: string; value: number }[]; conversions: { date: string; value: number }[] }>();
+  for (const r of rows) {
+    const mapKey = `${r.platform}|${r.campaign_id}`;
+    if (!byCampaign.has(mapKey)) {
+      byCampaign.set(mapKey, { key: { platform: r.platform as Platform, campaignId: r.campaign_id, campaignName: r.campaign_name }, spend: [], revenue: [], conversions: [] });
+    }
+    const entry = byCampaign.get(mapKey)!;
+    entry.spend.push({ date: r.date, value: r.spend });
+    entry.revenue.push({ date: r.date, value: r.revenue });
+    entry.conversions.push({ date: r.date, value: r.conversions });
+  }
+
+  const out: ForecastAdSpendRow[] = [];
+  for (const { key, spend, revenue, conversions } of byCampaign.values()) {
+    if (spend.length < MIN_CAMPAIGN_HISTORY_DAYS) continue;
+    const spendSeries = fillDailyGaps(spend);
+    const revenueSeries = fillDailyGaps(revenue);
+    const conversionsSeries = fillDailyGaps(conversions);
+
+    const spendPoints = forecastDailySeries(spendSeries, HORIZON_DAYS, startDate);
+    const revenuePoints = forecastDailySeries(revenueSeries, HORIZON_DAYS, startDate);
+    const conversionPoints = forecastDailySeries(conversionsSeries, HORIZON_DAYS, startDate);
+
+    for (let i = 0; i < spendPoints.length; i++) {
+      const sp = spendPoints[i];
+      const rv = revenuePoints[i];
+      const cv = conversionPoints[i];
+      out.push({
+        forecastDate: sp.forecastDate,
+        platform: key.platform,
+        campaignId: key.campaignId,
+        campaignName: key.campaignName,
+        predictedSpend: sp.predictedValue,
+        predictedRevenue: rv.predictedValue,
+        predictedRoas: safeDivide(rv.predictedValue, sp.predictedValue),
+        predictedConversions: cv.predictedValue,
+        ciLow: sp.ciLow,
+        ciHigh: sp.ciHigh,
+        modelUsed: sp.modelUsed,
+        r2: sp.r2,
+        isReliable: sp.isReliable,
       });
     }
   }
@@ -195,22 +279,59 @@ async function computeShopifyForecast(): Promise<ForecastShopifyRow[]> {
 async function upsertAdSpendForecast(rows: ForecastAdSpendRow[]): Promise<void> {
   if (rows.length === 0) return;
   const pool = getPool();
-  const cols = ["forecast_date", "platform", "predicted_spend", "ci_low", "ci_high", "model_used", "r2", "is_reliable"] as const;
-  const values: unknown[] = [];
-  const tuples: string[] = [];
-  rows.forEach((r, idx) => {
-    const base = idx * cols.length;
-    tuples.push(`(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`);
-    values.push(r.forecastDate, r.platform, r.predictedSpend, r.ciLow, r.ciHigh, r.modelUsed, r.r2, r.isReliable);
-  });
-  await pool.query(
-    `insert into forecast_ad_spend (${cols.join(", ")})
-     values ${tuples.join(", ")}
-     on conflict (forecast_date, platform) do update set
-       predicted_spend = excluded.predicted_spend, ci_low = excluded.ci_low, ci_high = excluded.ci_high,
-       model_used = excluded.model_used, r2 = excluded.r2, is_reliable = excluded.is_reliable, generated_at = now()`,
-    values
-  );
+  const cols = [
+    "forecast_date",
+    "platform",
+    "campaign_id",
+    "campaign_name",
+    "predicted_spend",
+    "predicted_revenue",
+    "predicted_roas",
+    "predicted_conversions",
+    "ci_low",
+    "ci_high",
+    "model_used",
+    "r2",
+    "is_reliable",
+  ] as const;
+  // Batched in chunks -- a full 30-day x ~15-campaign run is ~450 rows,
+  // comfortably under Postgres's param limit, but chunking keeps this safe
+  // if campaign count grows well beyond what's synced today.
+  const BATCH_SIZE = 400;
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE);
+    const values: unknown[] = [];
+    const tuples: string[] = [];
+    batch.forEach((r, idx) => {
+      const base = idx * cols.length;
+      tuples.push(`(${cols.map((_, j) => `$${base + j + 1}`).join(", ")})`);
+      values.push(
+        r.forecastDate,
+        r.platform,
+        r.campaignId,
+        r.campaignName,
+        r.predictedSpend,
+        r.predictedRevenue,
+        r.predictedRoas,
+        r.predictedConversions,
+        r.ciLow,
+        r.ciHigh,
+        r.modelUsed,
+        r.r2,
+        r.isReliable
+      );
+    });
+    await pool.query(
+      `insert into forecast_ad_spend (${cols.join(", ")})
+       values ${tuples.join(", ")}
+       on conflict (forecast_date, platform, campaign_id) do update set
+         campaign_name = excluded.campaign_name, predicted_spend = excluded.predicted_spend,
+         predicted_revenue = excluded.predicted_revenue, predicted_roas = excluded.predicted_roas,
+         predicted_conversions = excluded.predicted_conversions, ci_low = excluded.ci_low, ci_high = excluded.ci_high,
+         model_used = excluded.model_used, r2 = excluded.r2, is_reliable = excluded.is_reliable, generated_at = now()`,
+      values
+    );
+  }
 }
 
 async function upsertShopifyForecast(rows: ForecastShopifyRow[]): Promise<void> {
@@ -262,13 +383,22 @@ async function upsertShopifyForecast(rows: ForecastShopifyRow[]): Promise<void> 
 
 async function runForecast(): Promise<{ adSpendRows: number; shopifyRows: number }> {
   const [adSpend, shopify] = await Promise.all([computeAdSpendForecast(), computeShopifyForecast()]);
-  // Full replace, not a plain upsert -- the forecast window shifts by a day
-  // (or more, e.g. after a fix like this one) on every run, so an
-  // upsert-only write leaves the PREVIOUS run's now-out-of-range dates
-  // sitting in the table forever (confirmed live: an old run's leftover
-  // final day stuck around after a bug fix shifted every date back by one).
+  // Replace only the forward-looking window (forecast_date >= tomorrow),
+  // not the whole table -- the window shifts by a day (or more, e.g. after
+  // a fix) on every run, so replacing everything would leave the PREVIOUS
+  // run's now-out-of-range dates sitting in the table forever (confirmed
+  // live: an old run's leftover final day stuck around after a bug fix
+  // shifted every date back by one). Rows with forecast_date < tomorrow
+  // (i.e. today or earlier) are deliberately PRESERVED once they've
+  // passed -- CampaignForecastAccuracy needs a real historical record of
+  // "what did we predict for this date" to compare against what actually
+  // happened, which a full wipe-and-replace would destroy on every run.
+  const startDate = tomorrowIso();
   const pool = getPool();
-  await Promise.all([pool.query("delete from forecast_ad_spend"), pool.query("delete from forecast_shopify_performance")]);
+  await Promise.all([
+    pool.query("delete from forecast_ad_spend where forecast_date >= $1", [startDate]),
+    pool.query("delete from forecast_shopify_performance where forecast_date >= $1", [startDate]),
+  ]);
   await Promise.all([upsertAdSpendForecast(adSpend), upsertShopifyForecast(shopify)]);
   return { adSpendRows: adSpend.length, shopifyRows: shopify.length };
 }
@@ -367,48 +497,47 @@ predictiveAnalysisRouter.post(
   })
 );
 
+// campaign_id = 'all' only -- this is the platform-total view; the
+// per-campaign rows now living in the same table power the separate
+// Google/Meta "Predictive Analysis" pages (routes/campaignForecast.ts).
+async function fetchPlatformTotalAdSpend(): Promise<ForecastAdSpendRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select forecast_date::text as "forecastDate", platform::text as platform, campaign_id as "campaignId",
+            campaign_name as "campaignName", predicted_spend as "predictedSpend",
+            predicted_revenue as "predictedRevenue", predicted_roas as "predictedRoas",
+            predicted_conversions as "predictedConversions",
+            ci_low as "ciLow", ci_high as "ciHigh", model_used as "modelUsed", r2, is_reliable as "isReliable"
+     from forecast_ad_spend where campaign_id = 'all' order by forecast_date asc`
+  );
+  return rows as ForecastAdSpendRow[];
+}
+
+async function fetchShopifyPerformance(): Promise<ForecastShopifyRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `select forecast_date::text as "forecastDate", channel, predicted_revenue as "predictedRevenue",
+            predicted_orders as "predictedOrders", predicted_aov as "predictedAov",
+            predicted_conversion_rate as "predictedConversionRate", ci_low as "ciLow", ci_high as "ciHigh",
+            model_used as "modelUsed", r2, is_reliable as "isReliable"
+     from forecast_shopify_performance order by forecast_date asc`
+  );
+  return rows as ForecastShopifyRow[];
+}
+
 // GET /predictive-analysis -- reads the stored forecast; auto-runs once if
 // nothing's been computed yet (first-load convenience), same spirit as
 // auto-sync-on-load elsewhere in this app.
 predictiveAnalysisRouter.get(
   "/",
   asyncHandler(async (_req, res) => {
-    const pool = getPool();
-    let [{ rows: adSpendRows }, { rows: shopifyRows }] = await Promise.all([
-      pool.query(
-        `select forecast_date::text as "forecastDate", platform::text as platform, predicted_spend as "predictedSpend",
-                ci_low as "ciLow", ci_high as "ciHigh", model_used as "modelUsed", r2, is_reliable as "isReliable"
-         from forecast_ad_spend order by forecast_date asc`
-      ),
-      pool.query(
-        `select forecast_date::text as "forecastDate", channel, predicted_revenue as "predictedRevenue",
-                predicted_orders as "predictedOrders", predicted_aov as "predictedAov",
-                predicted_conversion_rate as "predictedConversionRate", ci_low as "ciLow", ci_high as "ciHigh",
-                model_used as "modelUsed", r2, is_reliable as "isReliable"
-         from forecast_shopify_performance order by forecast_date asc`
-      ),
-    ]);
+    let [adSpend, shopify] = await Promise.all([fetchPlatformTotalAdSpend(), fetchShopifyPerformance()]);
 
-    if (adSpendRows.length === 0 && shopifyRows.length === 0) {
+    if (adSpend.length === 0 && shopify.length === 0) {
       await runForecast();
-      [{ rows: adSpendRows }, { rows: shopifyRows }] = await Promise.all([
-        pool.query(
-          `select forecast_date::text as "forecastDate", platform::text as platform, predicted_spend as "predictedSpend",
-                  ci_low as "ciLow", ci_high as "ciHigh", model_used as "modelUsed", r2, is_reliable as "isReliable"
-           from forecast_ad_spend order by forecast_date asc`
-        ),
-        pool.query(
-          `select forecast_date::text as "forecastDate", channel, predicted_revenue as "predictedRevenue",
-                  predicted_orders as "predictedOrders", predicted_aov as "predictedAov",
-                  predicted_conversion_rate as "predictedConversionRate", ci_low as "ciLow", ci_high as "ciHigh",
-                  model_used as "modelUsed", r2, is_reliable as "isReliable"
-           from forecast_shopify_performance order by forecast_date asc`
-        ),
-      ]);
+      [adSpend, shopify] = await Promise.all([fetchPlatformTotalAdSpend(), fetchShopifyPerformance()]);
     }
 
-    const adSpend = adSpendRows as ForecastAdSpendRow[];
-    const shopify = shopifyRows as ForecastShopifyRow[];
     const [reconciliation, newVsReturning] = await Promise.all([fetchReconciliation(), fetchNewVsReturning()]);
     const funnelLag = computeFunnelLag(
       adSpend,

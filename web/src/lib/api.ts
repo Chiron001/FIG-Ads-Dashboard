@@ -30,6 +30,7 @@ import type {
   AiQueryHistoryResponse,
   Ga4Status,
   PredictiveAnalysisResponse,
+  CampaignForecastResponse,
 } from "@fig/shared";
 import { getStoredPassword } from "./sitePassword";
 
@@ -286,4 +287,8 @@ export async function runPredictiveAnalysisForecast(): Promise<{ ok: boolean; ad
     headers: { "Content-Type": "application/json", ...authHeaders() },
   });
   return res.json();
+}
+
+export function fetchCampaignForecast(platform: Platform): Promise<CampaignForecastResponse> {
+  return getJSON(`/campaign-forecast?platform=${platform}`);
 }
