@@ -532,8 +532,8 @@ export function ShopifyProductQuadrantsSection({ range, connected, refreshKey, t
             )}
           </div>
           <p className="mb-2 text-[11px] text-ink-muted">
-            Google + Meta sessions only (by utm_source), Pearson correlation vs. revenue -- isolates paid-traffic-driven
-            sessions from the site-wide total at left.
+            Google + Meta sessions only (GA4 Paid Search + Paid Social), Pearson correlation vs. revenue -- isolates
+            paid-traffic-driven sessions from the site-wide total at left.
           </p>
           {data?.marketingSessionsVsRevenue ? (
             <CorrelationScatter data={marketingCorrelationData} color="#e5a94e" xLabel="Mktg Sessions" yLabel="Revenue" />

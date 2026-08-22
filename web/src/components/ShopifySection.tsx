@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ShopifyOrderSummary, ShopifyProductRow, SyncLogEntry, MetricsSummaryResponse } from "@fig/shared";
+import type { ShopifyOrderSummary, ShopifyProductRow, SyncLogEntry, MetricsSummaryResponse, ShopifyTimeseriesPoint } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
-import { fetchShopifySummary, fetchShopifyProducts, triggerShopifySync, fetchSummary } from "../lib/api";
+import { fetchShopifySummary, fetchShopifyProducts, triggerShopifySync, fetchSummary, fetchShopifyTimeseries } from "../lib/api";
 import { formatCurrency, formatNumber, formatPercent, formatMultiplier } from "../lib/format";
 import { formatRelativeTime } from "../lib/relativeTime";
 import { comparisonRange, COMPARISON_LABELS, type ComparisonMode } from "../lib/comparisonRange";
@@ -11,8 +11,29 @@ import { ShopifyProductTable } from "./ShopifyProductTable";
 import { InfoNote } from "./InfoNote";
 import { ParetoChart } from "./ParetoChart";
 import { DeltaBadge } from "./DeltaBadge";
+import { TimeSeriesChart, type ChartPoint, type SmoothingMode } from "./TimeSeriesChart";
 
 const SHOPIFY_COLOR = "#95BF47";
+
+type ShopifyTimeseriesMetric = "revenue" | "spend" | "roas" | "orders" | "aov" | "acos" | "discounts" | "sessions" | "cvr";
+
+const TIMESERIES_METRIC_OPTIONS: { value: ShopifyTimeseriesMetric; label: string; formatter: (v: number | null | undefined) => string }[] = [
+  { value: "revenue", label: "Revenue", formatter: (v) => formatCurrency(v, true) },
+  { value: "spend", label: "Spend (Google + Meta)", formatter: (v) => formatCurrency(v, true) },
+  { value: "roas", label: "ROAS", formatter: (v) => formatMultiplier(v) },
+  { value: "orders", label: "Orders", formatter: (v) => formatNumber(v, true) },
+  { value: "aov", label: "AOV", formatter: (v) => formatCurrency(v, true) },
+  { value: "acos", label: "ACOS", formatter: (v) => formatPercent(v) },
+  { value: "discounts", label: "Discounts", formatter: (v) => formatCurrency(v, true) },
+  { value: "sessions", label: "Sessions (GA4)", formatter: (v) => formatNumber(v, true) },
+  { value: "cvr", label: "CVR", formatter: (v) => formatPercent(v) },
+];
+
+const TIMESERIES_SMOOTHING_OPTIONS: { value: SmoothingMode; label: string }[] = [
+  { value: "ma7", label: "7d MA" },
+  { value: "ewma", label: "EWMA" },
+  { value: "raw", label: "Raw" },
+];
 
 interface Props {
   range: DateRange;
@@ -39,6 +60,9 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
   // whatever the top bar's "Compare to" is set to -- powers the Products
   // table's always-on "Performance" column (see lib/productInsight.ts).
   const [previousPeriodProducts, setPreviousPeriodProducts] = useState<ShopifyProductRow[] | null>(null);
+  const [timeseries, setTimeseries] = useState<ShopifyTimeseriesPoint[]>([]);
+  const [timeseriesMetric, setTimeseriesMetric] = useState<ShopifyTimeseriesMetric>("revenue");
+  const [timeseriesSmoothing, setTimeseriesSmoothing] = useState<SmoothingMode>("ma7"); // spec §5: smoothed is the default, not raw
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +113,17 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
     };
   }, [range.from, range.to, connected, refreshKey, comparisonMode]);
 
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    fetchShopifyTimeseries(range.from, range.to)
+      .then((res) => !cancelled && setTimeseries(res.points))
+      .catch((err) => !cancelled && setError(String(err.message ?? err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [range.from, range.to, connected, refreshKey]);
+
   const blendedSpend = adSpend?.blended.spend ?? null;
   const blendedRoas = summary && blendedSpend != null ? safeDivide(summary.revenue, blendedSpend) : null;
   const blendedAcos = summary && blendedSpend != null && summary.revenue > 0 ? safeDivide(blendedSpend, summary.revenue) : null;
@@ -104,6 +139,12 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
   const totalRevenue = useMemo(() => products.reduce((s, p) => s + p.revenue, 0), [products]);
   const comparisonTotalRevenue = useMemo(() => (comparisonProducts ? comparisonProducts.reduce((s, p) => s + p.revenue, 0) : null), [comparisonProducts]);
   const paretoRevenueDelta = showDelta ? computeDelta(totalRevenue, comparisonTotalRevenue) : undefined;
+
+  const activeTimeseriesMetric = TIMESERIES_METRIC_OPTIONS.find((m) => m.value === timeseriesMetric)!;
+  const timeseriesChartPoints: ChartPoint[] = useMemo(
+    () => timeseries.map((p) => ({ date: p.date, value: p[timeseriesMetric] })),
+    [timeseries, timeseriesMetric]
+  );
 
   async function handleSync() {
     setSyncing(true);
@@ -244,17 +285,64 @@ export function ShopifySection({ range, connected, lastSync, onSyncComplete, ref
           delta={showDelta ? computeDelta(summary?.cvr, comparisonSummary?.cvr) : undefined}
           deltaLabel="vs comparison"
         />
-        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={8} />
-        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="by utm_source, site-wide" staggerIndex={9} />
+        <KpiTile label="Google Sessions" value={formatNumber(summary?.googleSessions)} accent={SHOPIFY_COLOR} sublabel="GA4 Paid Search, site-wide" staggerIndex={8} />
+        <KpiTile label="Meta Sessions" value={formatNumber(summary?.metaSessions)} accent={SHOPIFY_COLOR} sublabel="GA4 Paid Social, site-wide" staggerIndex={9} />
       </div>
 
       <div className="flex items-center gap-1.5 text-xs text-ink-muted">
         <InfoNote label="How Google/Meta Sessions are classified">
-          Classified from each session's utm_source tag (Shopify Analytics) -- directional, not a platform-verified
-          attribution. Real-world utm_source values are messy (placements, influencer tools, etc.); unrecognized
-          values fall into neither bucket rather than being guessed.
+          Classified by GA4's own channel model (real browser-side event data) -- "Google Sessions" is GA4's "Paid
+          Search" channel group, "Meta Sessions" is "Paid Social", true for this account specifically since Google +
+          Meta are the only two paid platforms connected. Not a regex guess against a utm_source tag -- GA4 already
+          resolves the actual traffic source.
         </InfoNote>
         How the session splits above are classified
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink-primary">{activeTimeseriesMetric.label} over time</h3>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-border p-0.5 text-xs">
+              {TIMESERIES_SMOOTHING_OPTIONS.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  onClick={() => setTimeseriesSmoothing(s.value)}
+                  className={`rounded px-2 py-1 transition-colors ${
+                    timeseriesSmoothing === s.value ? "bg-surface-2 text-ink-primary" : "text-ink-muted hover:text-ink-secondary"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={timeseriesMetric}
+              onChange={(e) => setTimeseriesMetric(e.target.value as ShopifyTimeseriesMetric)}
+              className="rounded-md border border-border bg-surface-0 px-2 py-1 text-xs text-ink-secondary"
+            >
+              {TIMESERIES_METRIC_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {(timeseriesMetric === "spend" || timeseriesMetric === "roas" || timeseriesMetric === "acos") && (
+          <p className="mb-2 text-[11px] text-ink-muted">Google + Meta spend, blended -- the one deliberate blending spot on this page.</p>
+        )}
+        {(timeseriesMetric === "sessions" || timeseriesMetric === "cvr") && (
+          <p className="mb-2 text-[11px] text-ink-muted">From GA4's daily channel data, not Shopify's own live session totals above (those have no daily history to chart).</p>
+        )}
+        <TimeSeriesChart
+          points={timeseriesChartPoints}
+          color={SHOPIFY_COLOR}
+          valueFormatter={activeTimeseriesMetric.formatter}
+          seriesLabel={activeTimeseriesMetric.label}
+          smoothing={timeseriesSmoothing}
+        />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface-1 p-4">

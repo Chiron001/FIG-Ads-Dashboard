@@ -275,12 +275,42 @@ export interface ShopifyOrderSummary {
   sessions: number | null;
   /** unitsSold / sessions -- null if sessions is null or 0. */
   cvr: number | null;
-  /** Site-wide sessions (all pages, not just /products/) whose utm_source
-   * classifies as Google -- see classifyUtmSource in the Shopify connector.
-   * Null if the ShopifyQL call failed. */
+  /** Site-wide sessions (all pages, not just /products/) in GA4's "Paid
+   * Search" channel group -- real GA4 event-data classification, not a
+   * utm_source guess (see connectors/ga4.ts). Null if GA4 has no data for
+   * this range at all (not configured, or a live query failure); a real 0
+   * means GA4 had data but zero Paid Search sessions specifically. */
   googleSessions: number | null;
-  /** Same, classified as Meta. */
+  /** Same, GA4's "Paid Social" channel group. */
   metaSessions: number | null;
+}
+
+/** One day of the Shopify page's own "metric over time" chart -- same
+ * shape/purpose as the platform pages' Spend/ROAS/etc. trend chart
+ * (TimeSeriesChart.tsx), but for Shopify's page: ground-truth revenue/
+ * orders/AOV/discounts from fact_shopify_orders, blended Google+Meta spend/
+ * ROAS/ACOS (the one deliberate blending spot on this page, same as the KPI
+ * tiles above it), and sessions/CVR from GA4's stored daily channel data
+ * (fact_ga4_channel_daily -- summed across channels here, not Shopify's own
+ * live-only ShopifyQL sessions, which have no daily history to chart at all
+ * -- see db/migrations/0007's header). */
+export interface ShopifyTimeseriesPoint {
+  date: string;
+  revenue: number;
+  orders: number;
+  aov: number | null;
+  discounts: number;
+  spend: number;
+  roas: number | null;
+  acos: number | null;
+  sessions: number | null;
+  cvr: number | null;
+}
+
+export interface ShopifyTimeseriesResponse {
+  from: string;
+  to: string;
+  points: ShopifyTimeseriesPoint[];
 }
 
 export interface ShopifySummaryResponse {
@@ -305,13 +335,12 @@ export interface ShopifyProductRow {
   sessions: number | null;
   /** unitsSold / sessions -- null if sessions is null or 0. */
   cvr: number | null;
-  /** This product's landing-page sessions whose utm_source classifies as
-   * Google (see classifyUtmSource in the Shopify connector). Null if
-   * productHandle is null or the ShopifyQL call failed. Directional, not
-   * exact -- utm_source is self-reported by the traffic source, not a
-   * platform-verified attribution. */
+  /** This product's landing-page sessions in GA4's "Paid Search" channel
+   * group (see connectors/ga4.ts's fetchGA4ProductSessionsByPlatform) --
+   * real GA4 event-data classification, not a utm_source guess. Null if
+   * productHandle is null or the GA4 query failed. */
   googleSessions: number | null;
-  /** Same, classified as Meta. */
+  /** Same, GA4's "Paid Social" channel group. */
   metaSessions: number | null;
   /** Meta spend from ads whose NAME carries this product's SKU as a "FIG-..."
    * tag (see metaSkuAttribution.ts's extractSkuToken) -- summed across every

@@ -7,6 +7,7 @@ import type {
   TimeseriesMetric,
   AppConfig,
   ShopifySummaryResponse,
+  ShopifyTimeseriesResponse,
   ShopifyProductsResponse,
   ProductQuadrantsResponse,
   ShopifyStatus,
@@ -125,6 +126,10 @@ export function fetchShopifySummary(from: string, to: string): Promise<ShopifySu
 
 export function fetchShopifyProducts(from: string, to: string): Promise<ShopifyProductsResponse> {
   return getJSON(`/shopify/products?from=${from}&to=${to}`);
+}
+
+export function fetchShopifyTimeseries(from: string, to: string): Promise<ShopifyTimeseriesResponse> {
+  return getJSON(`/shopify/timeseries?from=${from}&to=${to}`);
 }
 
 export function fetchShopifyProductQuadrants(from: string, to: string): Promise<ProductQuadrantsResponse> {

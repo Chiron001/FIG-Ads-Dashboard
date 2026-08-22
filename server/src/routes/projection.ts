@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { ShopifyConnector, type CanonicalShopifyProduct } from "../connectors/shopify";
+import { fetchGA4ProductSessionsByPlatform } from "../connectors/ga4";
 import { fetchAdMetricsByProductKeys } from "./shopify";
 import type { ProjectionRow, ProjectionResponse, ProjectionUpdateEntry, ProjectionInsight } from "@fig/shared";
 
@@ -79,11 +80,13 @@ async function fetchSessionsSafe(from: string, to: string): Promise<Map<string, 
   }
 }
 
+// GA4's real channel classification, not the old utm_source regex guess --
+// see connectors/ga4.ts's fetchGA4ProductSessionsByPlatform header comment.
 async function fetchSessionsByPlatformSafe(from: string, to: string): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
   try {
-    return await new ShopifyConnector().fetchProductSessionsByPlatform(from, to);
+    return await fetchGA4ProductSessionsByPlatform(from, to);
   } catch (err) {
-    console.warn("[projection] fetchProductSessionsByPlatform failed, returning empty maps:", err);
+    console.warn("[projection] fetchGA4ProductSessionsByPlatform failed, returning empty maps:", err);
     return { google: new Map(), meta: new Map() };
   }
 }

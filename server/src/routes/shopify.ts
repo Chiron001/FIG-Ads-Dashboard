@@ -3,6 +3,7 @@ import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { runShopifySync } from "../etl/shopifySync";
 import { ShopifyConnector } from "../connectors/shopify";
+import { fetchGA4ProductSessionsByPlatform } from "../connectors/ga4";
 import { env } from "../config/env";
 import { median, pearsonCorrelation, linearRegression } from "../stats";
 import { getCogsRate } from "../db/appSettings";
@@ -16,6 +17,8 @@ import type {
   ProductQuadrant,
   ProductQuadrantRow,
   ProductQuadrantsResponse,
+  ShopifyTimeseriesPoint,
+  ShopifyTimeseriesResponse,
 } from "@fig/shared";
 
 function safeDivide(n: number, d: number | null): number | null {
@@ -47,12 +50,31 @@ async function fetchProductSessionsSafe(from: string, to: string): Promise<Map<s
   }
 }
 
+/** GA4's own channel classification (real browser-side event data), not a
+ * regex guess against whatever a campaign happened to tag utm_source with --
+ * see connectors/ga4.ts's header comment on fetchGA4ProductSessionsByPlatform
+ * for why "Paid Search"/"Paid Social" map to Google/Meta specifically.
+ * Site-wide total is a stored-data query (fact_ga4_channel_daily), not a
+ * live API call -- fast, and consistent with the daily-synced history GA4
+ * already has. Distinguishes "GA4 has no data for this range at all" (null,
+ * both platforms) from "GA4 has data but zero sessions for that channel"
+ * (a real 0), same null-means-unavailable contract fetchTotalSessionsSafe
+ * already uses. */
 async function fetchTotalSessionsByPlatformSafe(from: string, to: string): Promise<{ google: number | null; meta: number | null }> {
   try {
-    const connector = new ShopifyConnector();
-    return await connector.fetchTotalSessionsByPlatform(from, to);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `select channel_group, coalesce(sum(sessions), 0)::float8 as sessions
+       from fact_ga4_channel_daily
+       where date between $1 and $2 and channel_group in ('Paid Search', 'Paid Social')
+       group by channel_group`,
+      [from, to]
+    );
+    if (rows.length === 0) return { google: null, meta: null };
+    const byChannel = new Map(rows.map((r) => [r.channel_group as string, r.sessions as number]));
+    return { google: byChannel.get("Paid Search") ?? 0, meta: byChannel.get("Paid Social") ?? 0 };
   } catch (err) {
-    console.warn("[shopify] fetchTotalSessionsByPlatform failed, returning null:", err);
+    console.warn("[shopify] fetchTotalSessionsByPlatform (GA4) failed, returning null:", err);
     return { google: null, meta: null };
   }
 }
@@ -62,10 +84,9 @@ async function fetchProductSessionsByPlatformSafe(
   to: string
 ): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
   try {
-    const connector = new ShopifyConnector();
-    return await connector.fetchProductSessionsByPlatform(from, to);
+    return await fetchGA4ProductSessionsByPlatform(from, to);
   } catch (err) {
-    console.warn("[shopify] fetchProductSessionsByPlatform failed, returning empty maps:", err);
+    console.warn("[shopify] fetchProductSessionsByPlatform (GA4) failed, returning empty maps:", err);
     return { google: new Map(), meta: new Map() };
   }
 }
@@ -265,6 +286,74 @@ shopifyRouter.get(
     };
 
     const response: ShopifySummaryResponse = { from: range.from, to: range.to, summary };
+    res.json(response);
+  })
+);
+
+// GET /shopify/timeseries?from&to -- daily points for this page's own
+// "metric over time" chart. Blended Google+Meta spend/ROAS/ACOS is the one
+// deliberate blending spot here (matches the KPI tiles above it on this
+// page); sessions/CVR come from GA4's stored daily channel data
+// (fact_ga4_channel_daily), not Shopify's own live-only ShopifyQL sessions,
+// which have no daily history to chart (see db/migrations/0007's header).
+shopifyRouter.get(
+  "/timeseries",
+  asyncHandler(async (req, res) => {
+    const range = parseDateRange(req.query as Record<string, unknown>);
+    if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
+
+    const pool = getPool();
+    const [{ rows: orderRows }, { rows: spendRows }, { rows: sessionRows }] = await Promise.all([
+      pool.query(
+        `select date::text as date, count(*)::float8 as orders,
+                coalesce(sum(total_price), 0)::float8 as revenue,
+                coalesce(sum(total_discounts), 0)::float8 as discounts
+         from fact_shopify_orders
+         where date between $1 and $2
+         group by date`,
+        [range.from, range.to]
+      ),
+      pool.query(
+        `select date::text as date, coalesce(sum(spend), 0)::float8 as spend
+         from fact_ad_performance
+         where date between $1 and $2 and platform::text in ('google', 'meta')
+         group by date`,
+        [range.from, range.to]
+      ),
+      pool.query(
+        `select date::text as date, coalesce(sum(sessions), 0)::float8 as sessions
+         from fact_ga4_channel_daily
+         where date between $1 and $2
+         group by date`,
+        [range.from, range.to]
+      ),
+    ]);
+
+    const spendByDate = new Map(spendRows.map((r) => [r.date, r.spend as number]));
+    const sessionsByDate = new Map(sessionRows.map((r) => [r.date, r.sessions as number]));
+
+    const points: ShopifyTimeseriesPoint[] = orderRows
+      .map((r) => {
+        const revenue = r.revenue as number;
+        const orders = r.orders as number;
+        const spend = spendByDate.get(r.date) ?? 0;
+        const sessions = sessionsByDate.has(r.date) ? sessionsByDate.get(r.date)! : null;
+        return {
+          date: r.date,
+          revenue,
+          orders,
+          aov: safeDivide(revenue, orders),
+          discounts: r.discounts as number,
+          spend,
+          roas: safeDivide(revenue, spend),
+          acos: revenue > 0 ? safeDivide(spend, revenue) : null,
+          sessions,
+          cvr: sessions != null ? safeDivide(orders, sessions) : null,
+        };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const response: ShopifyTimeseriesResponse = { from: range.from, to: range.to, points };
     res.json(response);
   })
 );

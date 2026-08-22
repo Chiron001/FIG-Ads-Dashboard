@@ -1348,6 +1348,42 @@ Build proceeds phase by phase per the project spec, committing after each.
         live in both themes: Google's top campaign showed a genuinely
         reliable trend fit (r²=0.38) while Meta's showed the honest flat
         baseline with a wide band, matching what the backtest predicted.
+- [x] **Shopify page: "metric over time" chart with 7d MA/EWMA/Raw** (2026-08-22),
+      matching the platform pages' existing pattern (`TimeSeriesChart.tsx`,
+      the same component, not a reimplementation). New `GET /shopify/
+      timeseries` endpoint -- daily revenue/orders/AOV/discounts (ground
+      truth, `fact_shopify_orders`), blended Google+Meta spend/ROAS/ACOS
+      (the one deliberate blending spot on this page, matching the KPI
+      tiles above it), and sessions/CVR sourced from GA4's stored daily
+      channel data (`fact_ga4_channel_daily`) -- Shopify's own live
+      ShopifyQL sessions have no daily history to chart at all. Metric
+      dropdown covers all nine; smoothing toggle defaults to 7d MA per the
+      same spec every other trend chart in this app already follows.
+- [x] **Google/Meta Sessions everywhere switched from a utm_source guess to
+      real GA4 channel data** (2026-08-22), on explicit request ("provide
+      the most accurate data"). The old method (`classifyUtmSource` in the
+      Shopify connector) regex-matched whatever string a campaign happened
+      to tag `utm_source` with -- messy in practice (Meta alone had 20+
+      observed placement-specific values). GA4's `sessionDefaultChannelGroup`
+      is a real classification from actual browser-side event data, not a
+      guess -- "Google Sessions" now means GA4's "Paid Search" channel,
+      "Meta Sessions" means "Paid Social" (true for this account
+      specifically, since Google + Meta are the only two paid platforms
+      connected). Fixed at every call site: the Shopify page's site-wide
+      Google/Meta Sessions KPIs (now a fast stored-data query against
+      `fact_ga4_channel_daily`, not a live API call at all), the Products
+      and Product Quadrants pages' per-product session/CVR columns and the
+      "Marketing Sessions vs Revenue" correlation chart, and the Projection
+      Sheet's `mtdGoogleSessions`/`mtdMetaSessions` -- all now backed by one
+      new `fetchGA4ProductSessionsByPlatform` (`connectors/ga4.ts`), reusing
+      the same handle-redirect resolution Shopify's own per-product session
+      queries already use so a renamed product's history isn't lost. The
+      old ShopifyQL-based methods, `classifyUtmSource`, and their dedicated
+      test file were fully removed, not left as dead/fallback code, once
+      confirmed nothing else referenced them. Verified live: Google 9,605 /
+      Meta 33,580 site-wide sessions and 142/149 products with real
+      per-product session data over the same 30-day window used to
+      cross-check the fix.
 
 ## Structure
 

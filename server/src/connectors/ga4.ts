@@ -1,5 +1,6 @@
 import { BetaAnalyticsDataClient, protos } from "@google-analytics/data";
 import { env } from "../config/env";
+import { extractProductHandle, resolveCanonicalHandle, fetchHandleRedirectMap } from "./shopify";
 
 // GA4 Data API -- channel/session cross-check, separate from Shopify's own
 // live-only ShopifyQL session data (see db/migrations/0007's header). Unlike
@@ -67,4 +68,78 @@ export async function fetchGA4DailyChannelData(from: string, to: string): Promis
       transactions: Number(cellValue(row, 3, "metric")) || 0,
     };
   });
+}
+
+// --- per-product sessions by ad platform (Google/Meta), replacing the old
+// ShopifyQL utm_source guess -----------------------------------------------
+//
+// GA4's sessionDefaultChannelGroup is a real classification (browser-side
+// event data, GA4's own channel model), not a regex match against whatever
+// string a campaign happened to tag utm_source with -- more accurate, per
+// explicit request, for exactly the fields that used to rely on the guess
+// (Shopify page's Google/Meta Sessions KPIs, Products/Product Quadrants'
+// per-product session-and-CVR columns, Projection Sheet's mtdGoogleSessions/
+// mtdMetaSessions). "Paid Search" = Google Ads, "Paid Social" = Meta Ads --
+// true for this account specifically since Google + Meta are the only two
+// paid platforms connected (confirmed live: no other paid channel group has
+// meaningful volume). Not stored (unlike fetchGA4DailyChannelData) -- same
+// "live per-request, not worth a storage layer" call as Shopify's own
+// per-product session queries, since this is keyed by product×date-range,
+// not a fixed daily grain.
+
+const GOOGLE_ADS_CHANNEL_GROUP = "Paid Search";
+const META_ADS_CHANNEL_GROUP = "Paid Social";
+
+interface GA4PageSessionsRow {
+  pagePath: string;
+  sessions: number;
+}
+
+async function fetchGA4SessionsByPageForChannel(channelGroup: string, from: string, to: string): Promise<GA4PageSessionsRow[]> {
+  if (!env.ga4.propertyId) {
+    throw new Error("GA4 not configured -- missing GA4_PROPERTY_ID in .env.");
+  }
+  const analyticsDataClient = getClient();
+  const [response] = await analyticsDataClient.runReport({
+    property: `properties/${env.ga4.propertyId}`,
+    dateRanges: [{ startDate: from, endDate: to }],
+    dimensions: [{ name: "pagePath" }],
+    metrics: [{ name: "sessions" }],
+    dimensionFilter: {
+      filter: { fieldName: "sessionDefaultChannelGroup", stringFilter: { matchType: "EXACT", value: channelGroup } },
+    },
+    limit: 10000,
+  });
+  return (response.rows ?? []).map((row) => ({
+    pagePath: cellValue(row, 0, "dimension"),
+    sessions: Number(cellValue(row, 0, "metric")) || 0,
+  }));
+}
+
+/** Per-product session counts for the range, split by ad platform, keyed by
+ * product handle (canonicalized through the same handle-redirect chain
+ * Shopify's own per-product session queries use -- a session recorded
+ * against a product's OLD handle must still count toward that product, not
+ * silently disappear after a rename). Throws if GA4 isn't configured;
+ * callers wrap this in their own try/catch "safe" fallback, same convention
+ * as every other per-product session fetch in this app. */
+export async function fetchGA4ProductSessionsByPlatform(from: string, to: string): Promise<{ google: Map<string, number>; meta: Map<string, number> }> {
+  const [googleRows, metaRows, redirects] = await Promise.all([
+    fetchGA4SessionsByPageForChannel(GOOGLE_ADS_CHANNEL_GROUP, from, to),
+    fetchGA4SessionsByPageForChannel(META_ADS_CHANNEL_GROUP, from, to),
+    fetchHandleRedirectMap(),
+  ]);
+
+  const buildMap = (rows: GA4PageSessionsRow[]): Map<string, number> => {
+    const byHandle = new Map<string, number>();
+    for (const row of rows) {
+      const rawHandle = extractProductHandle(row.pagePath);
+      if (!rawHandle) continue;
+      const handle = resolveCanonicalHandle(rawHandle, redirects);
+      byHandle.set(handle, (byHandle.get(handle) ?? 0) + row.sessions);
+    }
+    return byHandle;
+  };
+
+  return { google: buildMap(googleRows), meta: buildMap(metaRows) };
 }
