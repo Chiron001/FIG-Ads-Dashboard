@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AdditionalCost, AdditionalCostType, IntegrationStatus, ShopifyOrderSummary, MetricsSummaryResponse } from "@fig/shared";
+import type { AdditionalCost, AdditionalCostType, IntegrationStatus, ShopifyOrderSummary, MetricsSummaryResponse, Ga4Config } from "@fig/shared";
 import type { DateRange } from "../lib/dateRanges";
 import { fetchSettings, updateSettings, fetchShopifySummary, fetchSummary } from "../lib/api";
 import { formatCurrency, formatNumber } from "../lib/format";
@@ -26,6 +26,7 @@ function costsEqual(a: AdditionalCost[], b: AdditionalCost[]): boolean {
 
 export function SettingsSection({ range }: Props) {
   const [integrations, setIntegrations] = useState<IntegrationStatus[] | null>(null);
+  const [ga4, setGa4] = useState<Ga4Config | null>(null);
   const [anthropicConfigured, setAnthropicConfigured] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [savingKey, setSavingKey] = useState(false);
@@ -51,6 +52,7 @@ export function SettingsSection({ range }: Props) {
       .then((res) => {
         if (cancelled) return;
         setIntegrations(res.integrations);
+        setGa4(res.ga4);
         setAnthropicConfigured(res.settings.anthropicApiKeyConfigured);
         setCogsRatePct(String(Math.round(res.settings.cogsRate * 1000) / 10));
         setSavedCogsRate(res.settings.cogsRate);
@@ -260,6 +262,42 @@ export function SettingsSection({ range }: Props) {
         </div>
         {keyError && <p className="mt-2 text-xs text-status-critical">{keyError}</p>}
         {keyMessage && !keyError && <p className="mt-2 text-xs text-status-good">{keyMessage}</p>}
+      </div>
+
+      {/* --- Google Analytics (GA4) ---------------------------------------- */}
+      <div className="rounded-2xl border border-border bg-surface-1 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-display text-base text-ink-primary">Google Analytics (GA4)</h3>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              ga4?.configured ? "bg-status-good/15 text-status-good" : "bg-surface-2 text-ink-muted"
+            }`}
+          >
+            {ga4?.configured ? "Connected" : "Not connected"}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Powers channel/session data across Shopify, Products, Product Quadrants, and the Projection Sheet. Set from
+          Railway's environment variables (GA4_PROPERTY_ID, GA4_SERVICE_ACCOUNT_KEY_BASE64), not this page -- the two
+          identifying details below are shown so you can confirm what's configured without opening .env; the private
+          key itself is never shown here or sent to the browser.
+        </p>
+        {ga4?.configured ? (
+          <div className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <div className="text-xs text-ink-muted">Property ID</div>
+              <div className="font-mono text-ink-primary">{ga4.propertyId}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink-muted">Service account</div>
+              <div className="truncate font-mono text-ink-primary" title={ga4.serviceAccountEmail ?? undefined}>
+                {ga4.serviceAccountEmail}
+              </div>
+            </div>
+          </div>
+        ) : (
+          !loading && <p className="mt-2 text-xs text-ink-muted">No GA4_PROPERTY_ID / GA4_SERVICE_ACCOUNT_KEY_BASE64 set yet.</p>
+        )}
       </div>
 
       {/* --- Products COGS ------------------------------------------------ */}

@@ -1384,6 +1384,19 @@ Build proceeds phase by phase per the project spec, committing after each.
       Meta 33,580 site-wide sessions and 142/149 products with real
       per-product session data over the same 30-day window used to
       cross-check the fix.
+- [x] **Settings page: GA4 connection details (Property ID, service account
+      email)** (2026-08-23), on request. GA4 is configured via .env, not a
+      Settings-page field like the Anthropic key -- previously the "API
+      Integrations" list didn't even list GA4 at all. Added a "ga4" row
+      there (Connected/Not connected + env var names, same as every other
+      integration) and a new dedicated "Google Analytics (GA4)" card
+      showing the actual Property ID and service-account email so they can
+      be confirmed at a glance without opening `.env` -- an explicit,
+      narrow exception to "never the values themselves," since those two
+      fields identify the connection without being secrets; the private
+      key itself is never returned to the browser. New `Ga4Config` type,
+      `GET /settings`'s response gains a `ga4` field alongside the existing
+      `settings`/`integrations`.
 
 ## Structure
 

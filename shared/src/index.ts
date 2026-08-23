@@ -1025,9 +1025,23 @@ export interface IntegrationStatus {
   envVars: string[];
 }
 
+/** GA4 is configured via .env (GA4_PROPERTY_ID / GA4_SERVICE_ACCOUNT_KEY_BASE64),
+ * not a Settings-page text field like the Anthropic key -- this is a
+ * read-only display of what's already set, an explicit exception to
+ * IntegrationStatus's "never the values themselves" rule: propertyId and
+ * serviceAccountEmail identify the connection (which GA4 property, which
+ * service account was granted access) without being secrets themselves.
+ * The private key is never included here. */
+export interface Ga4Config {
+  configured: boolean;
+  propertyId: string | null;
+  serviceAccountEmail: string | null;
+}
+
 export interface SettingsResponse {
   settings: AppSettings;
   integrations: IntegrationStatus[];
+  ga4: Ga4Config;
 }
 
 // --- Projection Sheet (Shopify -> ↳ Projection Sheet) -----------------------

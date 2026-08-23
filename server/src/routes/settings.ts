@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { env } from "../config/env";
-import type { AppSettings, AdditionalCost, AdditionalCostType, IntegrationStatus, SettingsResponse } from "@fig/shared";
+import type { AppSettings, AdditionalCost, AdditionalCostType, IntegrationStatus, SettingsResponse, Ga4Config } from "@fig/shared";
 
 export const settingsRouter = Router();
 
@@ -82,7 +82,21 @@ function integrationStatuses(anthropicConfigured: boolean): IntegrationStatus[] 
       connected: anthropicConfigured,
       envVars: ["(set from the field below, not an env var)"],
     },
+    {
+      id: "ga4",
+      label: "GA4 (Google Analytics Data API)",
+      connected: Boolean(env.ga4.propertyId && env.ga4.serviceAccountKey),
+      envVars: ["GA4_PROPERTY_ID", "GA4_SERVICE_ACCOUNT_KEY_BASE64"],
+    },
   ];
+}
+
+function ga4Config(): Ga4Config {
+  return {
+    configured: Boolean(env.ga4.propertyId && env.ga4.serviceAccountKey),
+    propertyId: env.ga4.propertyId ?? null,
+    serviceAccountEmail: env.ga4.serviceAccountKey?.client_email ?? null,
+  };
 }
 
 // GET /settings
@@ -90,7 +104,7 @@ settingsRouter.get(
   "/",
   asyncHandler(async (_req, res) => {
     const settings = await fetchSettings();
-    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured) };
+    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured), ga4: ga4Config() };
     res.json(response);
   })
 );
@@ -149,7 +163,7 @@ settingsRouter.patch(
     }
 
     const settings = await fetchSettings();
-    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured) };
+    const response: SettingsResponse = { settings, integrations: integrationStatuses(settings.anthropicApiKeyConfigured), ga4: ga4Config() };
     res.json(response);
   })
 );
