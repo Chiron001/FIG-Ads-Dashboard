@@ -1397,6 +1397,25 @@ Build proceeds phase by phase per the project spec, committing after each.
       key itself is never returned to the browser. New `Ga4Config` type,
       `GET /settings`'s response gains a `ga4` field alongside the existing
       `settings`/`integrations`.
+- [x] **Amazon Ads connector built** (2026-08-23) -- Phase 4c, previously on
+      hold. `server/src/connectors/amazon.ts`: Sponsored Products
+      campaign+ad-group-grain daily performance via the async v3 Reporting
+      API (create report -> poll -> download), LWA refresh-token exchange,
+      wired into the same `CONNECTORS` map/`runSync` pipeline Google and
+      Meta already use -- no separate pipeline. `routes/sync.ts`'s
+      `isConnected()` and `routes/settings.ts`'s integration-status check
+      (which was missing `AMAZON_REGION` in its condition, fixed) both now
+      reflect real credential state instead of a hardcoded `false`.
+      **Not yet verified live** -- built against Amazon's public v3
+      Reporting API docs before this account had an approved Client ID to
+      test against (Amazon Ads API access is a separate approval, applied
+      for during this same session); column names and the campaign-list
+      endpoint's exact shape should be spot-checked on the first real sync,
+      same as this project's other connectors document their own live
+      checks once made. Client ID/Secret provided and saved to `.env`; the
+      refresh-token/profile/region minting step (`npm run amazon:auth
+      --workspace server`) requires the user's own browser login and was
+      still pending at the time of this commit.
 
 ## Structure
 

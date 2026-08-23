@@ -53,7 +53,7 @@ function integrationStatuses(anthropicConfigured: boolean): IntegrationStatus[] 
     {
       id: "amazon",
       label: "Amazon Ads",
-      connected: Boolean(env.amazon.clientId && env.amazon.clientSecret && env.amazon.refreshToken && env.amazon.profileId),
+      connected: Boolean(env.amazon.clientId && env.amazon.clientSecret && env.amazon.refreshToken && env.amazon.profileId && env.amazon.region),
       envVars: ["AMAZON_CLIENT_ID", "AMAZON_CLIENT_SECRET", "AMAZON_REFRESH_TOKEN", "AMAZON_PROFILE_ID", "AMAZON_REGION"],
     },
     {

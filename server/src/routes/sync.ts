@@ -11,7 +11,8 @@ export const syncRouter = Router();
 function isConnected(platform: Platform): boolean {
   if (platform === "google") return Boolean(env.google.clientId && env.google.refreshToken && env.google.customerId);
   if (platform === "meta") return Boolean(env.meta.accessToken && env.meta.adAccountId);
-  return false; // amazon on hold; myntra is CSV-only by design, never "connected" in the live-API sense
+  if (platform === "amazon") return Boolean(env.amazon.clientId && env.amazon.refreshToken && env.amazon.profileId && env.amazon.region);
+  return false; // myntra is CSV-only by design, never "connected" in the live-API sense
 }
 
 function isoDaysAgo(n: number): string {

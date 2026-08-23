@@ -1,16 +1,18 @@
 import { getPool } from "../db/pool";
 import { GoogleAdsConnector } from "../connectors/google";
 import { MetaAdsConnector } from "../connectors/meta";
+import { AmazonAdsConnector } from "../connectors/amazon";
 import { runGoogleGrainSync, runMetaGrainSync } from "./productAdGrains";
 import type { AdsConnector, CampaignRosterEntry, CanonicalRowInput, Platform } from "@fig/shared";
 
-// Amazon/Myntra intentionally omitted -- on hold (Phase 4c/4d), see README.
-// runSync() below returns a clean "not implemented" sync_log entry for them
+// Myntra intentionally omitted -- CSV-ingest only by design, see README.
+// runSync() below returns a clean "not implemented" sync_log entry for it
 // rather than crashing, so /sync/status and the dashboard can still show
-// those platforms gracefully as not-yet-connected.
+// it gracefully as not-yet-connected.
 const CONNECTORS: Partial<Record<Platform, () => AdsConnector>> = {
   google: () => new GoogleAdsConnector(),
   meta: () => new MetaAdsConnector(),
+  amazon: () => new AmazonAdsConnector(),
 };
 
 const UPSERT_COLUMNS = [
