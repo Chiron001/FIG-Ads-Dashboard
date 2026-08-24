@@ -1458,8 +1458,20 @@ Build proceeds phase by phase per the project spec, committing after each.
       product-level via `fetchProductPerformance`) since all three shared
       the same hardcoded window. `attributionWindow` label changed from
       `meta_7d_click` to `meta_default` to reflect this. Re-synced data
-      going forward will match Ads Manager; historical rows already synced
-      under the old click-only window are not backfilled.
+      going forward will match Ads Manager. Also backfilled all historical
+      `fact_ad_performance` Meta rows (2026-06-14 through 2026-08-23) with
+      the corrected default-attribution numbers via `/sync/meta`. That
+      resync inserted new rows alongside the old ones rather than
+      overwriting them, because `fact_ad_performance`'s unique index
+      includes `attribution_window` (`db/migrations/0001_init.sql`) and the
+      label itself changed (`meta_7d_click` -> `meta_default`) -- briefly
+      doubled Meta's spend/revenue in production (confirmed live: spend was
+      exactly 2x). Fixed with a one-off cleanup delete removing the
+      superseded `meta_7d_click` rows for every date that already had a
+      `meta_default` counterpart (1,949 rows), run only after explicit
+      user approval since it was a direct production DB mutation. Verified
+      live afterward: `/metrics/summary` for a spot-checked date returned
+      to the correct, non-doubled figures.
 
 ## Structure
 
