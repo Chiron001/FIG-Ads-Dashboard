@@ -8,12 +8,16 @@ import type { ProductPerformanceInput, AdPerformanceInput } from "../etl/grainTy
 const GRAPH_API_VERSION = "v21.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 
-// Explicitly requested (not left to the ad account's default setting) so
-// the "meta_7d_click" attribution_window label we store is actually
-// accurate, not just assumed — same principle as the Google connector not
-// silently mislabeling dates when the account timezone isn't IST.
-const ATTRIBUTION_WINDOW_PARAM = "7d_click";
-const ATTRIBUTION_WINDOW_LABEL = "meta_7d_click";
+// Deliberately NOT pinned to a fixed window (e.g. "7d_click" alone) --
+// confirmed live that Meta Ads Manager's own "Purchases conversion value"
+// column (what the user compares this dashboard against) reports each
+// ad set's own default attribution setting, e.g. "7-day click or 1-day
+// view", not a click-only window. Requesting no action_attribution_windows
+// param and reading the plain "value" key returns that same default-setting
+// number: for a real yesterday check, 7d_click alone (91,914.61) undercounted
+// against Ads Manager's 112,548.87 by exactly the 1d_view portion
+// (20,634.26) -- 91,914.61 + 20,634.26 = 112,548.87, confirmed live.
+const ATTRIBUTION_WINDOW_LABEL = "meta_default";
 
 const INSIGHTS_FIELDS = [
   "campaign_id",
@@ -71,13 +75,10 @@ const PRODUCT_BREAKDOWN_CHUNK_DAYS = 7;
 
 interface MetaActionValue {
   action_type: string;
+  // With no action_attribution_windows param requested, this is the
+  // ad set's own default-attribution-setting number -- the same one Ads
+  // Manager's UI displays.
   value: string;
-  // When action_attribution_windows is passed, Meta adds a same-named key
-  // per requested window (e.g. "7d_click") alongside the generic "value".
-  // "value" is NOT guaranteed to equal that window's number for every
-  // account/action combination -- read the named key explicitly so the
-  // meta_7d_click label we store is actually accurate, not assumed.
-  [attributionWindowKey: string]: string | undefined;
 }
 
 interface MetaInsightRow {
@@ -232,11 +233,7 @@ function findPurchaseValue(entries: MetaActionValue[] | undefined): number {
   if (!entries) return 0;
   const purchase = entries.find((e) => e.action_type === "purchase") ?? entries.find((e) => e.action_type === "omni_purchase");
   if (!purchase) return 0;
-  // Prefer the explicitly-windowed key (matches ATTRIBUTION_WINDOW_PARAM,
-  // e.g. "7d_click") over the generic "value", which isn't guaranteed to
-  // equal that window's number.
-  const windowed = purchase[ATTRIBUTION_WINDOW_PARAM];
-  return Number(windowed ?? purchase.value);
+  return Number(purchase.value);
 }
 
 export class MetaAdsConnector implements AdsConnector {
@@ -288,7 +285,6 @@ export class MetaAdsConnector implements AdsConnector {
       `&fields=${INSIGHTS_FIELDS}` +
       `&time_increment=1` +
       `&time_range=${timeRange}` +
-      `&action_attribution_windows=${ATTRIBUTION_WINDOW_PARAM}` +
       `&limit=200` +
       `&access_token=${this.accessToken}`;
 
@@ -381,7 +377,6 @@ export class MetaAdsConnector implements AdsConnector {
       `&fields=${AD_INSIGHTS_FIELDS}` +
       `&time_increment=1` +
       `&time_range=${timeRange}` +
-      `&action_attribution_windows=${ATTRIBUTION_WINDOW_PARAM}` +
       `&limit=200` +
       `&access_token=${this.accessToken}`;
 
@@ -440,7 +435,6 @@ export class MetaAdsConnector implements AdsConnector {
         `&breakdowns=product_id` +
         `&time_increment=1` +
         `&time_range=${timeRange}` +
-        `&action_attribution_windows=${ATTRIBUTION_WINDOW_PARAM}` +
         `&limit=200` +
         `&access_token=${this.accessToken}`;
 

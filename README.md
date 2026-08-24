@@ -1441,6 +1441,25 @@ Build proceeds phase by phase per the project spec, committing after each.
       provide, so those can legitimately read a few rupees different from
       the headline figure now, same "different lens, don't sum them"
       principle already documented elsewhere in this app.
+- [x] **Fixed Meta Ads revenue undercounting vs Meta Ads Manager's own
+      numbers** (2026-08-24) -- flagged from a screenshot: Meta Ads Manager's
+      "Purchases conversion value" showed ₹1,12,548.87 for a day, this app
+      showed ₹97,006. Root cause found live, not guessed: the connector
+      explicitly requested `action_attribution_windows=7d_click`, discarding
+      the ad set's actual (default) attribution setting -- for this account
+      that default is "7-day click or 1-day view", and the connector's
+      click-only number was undercounting by exactly the 1-day-view portion
+      (91,914.61 click-only + 20,634.26 view-through = 112,548.87, confirmed
+      live against Meta's own API). Fix: `connectors/meta.ts` no longer pins
+      `action_attribution_windows` at all -- Meta returns each row's plain
+      `value`, which is the ad set's own default-attribution number, the
+      same one Ads Manager's UI displays. Applies to all three grains
+      (campaign/adset via `fetchRaw`, ad-level via `fetchAdPerformance`,
+      product-level via `fetchProductPerformance`) since all three shared
+      the same hardcoded window. `attributionWindow` label changed from
+      `meta_7d_click` to `meta_default` to reflect this. Re-synced data
+      going forward will match Ads Manager; historical rows already synced
+      under the old click-only window are not backfilled.
 
 ## Structure
 

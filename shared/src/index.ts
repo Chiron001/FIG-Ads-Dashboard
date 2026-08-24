@@ -46,7 +46,7 @@ export interface CanonicalRow {
   clicks: number;
   conversions: number; // orders
   revenue: number; // INR
-  /** Source attribution window, e.g. meta_7d_click, amazon_14d, google_dda, myntra_as_reported. */
+  /** Source attribution window, e.g. meta_default, amazon_14d, google_dda, myntra_as_reported. */
   attributionWindow: string;
   /** Google Ads only (Search-eligible campaign types) -- search_impression_share. Null elsewhere/unavailable. */
   searchImpressionShare: number | null;
