@@ -263,6 +263,12 @@ export interface SyncStatusResponse {
 // happened, plus product-level detail no ad platform's fact rows have.
 
 export interface ShopifyOrderSummary {
+  /** orders/revenue/discounts/aov are Shopify's own "Total sales" ShopifyQL
+   * report when available (connectors/shopify.ts's fetchSalesTotals), NOT
+   * a sum of fact_shopify_orders -- confirmed live those two sources
+   * genuinely disagree (processed returns don't always show up in an
+   * order's currentTotalPriceSet), not just noise. Falls back to the
+   * fact_shopify_orders sum only if that ShopifyQL call fails. */
   orders: number;
   revenue: number;
   aov: number | null; // null if orders = 0
@@ -287,13 +293,16 @@ export interface ShopifyOrderSummary {
 
 /** One day of the Shopify page's own "metric over time" chart -- same
  * shape/purpose as the platform pages' Spend/ROAS/etc. trend chart
- * (TimeSeriesChart.tsx), but for Shopify's page: ground-truth revenue/
- * orders/AOV/discounts from fact_shopify_orders, blended Google+Meta spend/
- * ROAS/ACOS (the one deliberate blending spot on this page, same as the KPI
- * tiles above it), and sessions/CVR from GA4's stored daily channel data
- * (fact_ga4_channel_daily -- summed across channels here, not Shopify's own
- * live-only ShopifyQL sessions, which have no daily history to chart at all
- * -- see db/migrations/0007's header). */
+ * (TimeSeriesChart.tsx), but for Shopify's page: revenue/orders/AOV are
+ * Shopify's own daily "Total sales" ShopifyQL report when available (see
+ * ShopifyOrderSummary's header comment on why this differs from summing
+ * fact_shopify_orders), falling back to that sum only if the ShopifyQL call
+ * fails; discounts stays order-level (the daily report doesn't include it).
+ * Blended Google+Meta spend/ROAS/ACOS (the one deliberate blending spot on
+ * this page, same as the KPI tiles above it), and sessions/CVR from GA4's
+ * stored daily channel data (fact_ga4_channel_daily -- summed across
+ * channels here, not Shopify's own live-only ShopifyQL sessions, which have
+ * no daily history to chart at all -- see db/migrations/0007's header). */
 export interface ShopifyTimeseriesPoint {
   date: string;
   revenue: number;

@@ -1416,6 +1416,31 @@ Build proceeds phase by phase per the project spec, committing after each.
       refresh-token/profile/region minting step (`npm run amazon:auth
       --workspace server`) requires the user's own browser login and was
       still pending at the time of this commit.
+- [x] **Fixed Shopify "Total sales" reading higher than Shopify's own
+      dashboard** (2026-08-24) -- flagged from a screenshot: Shopify's admin
+      showed ₹1,60,448.10 for the day, this app showed ₹1,78,084. Root cause
+      found live, not guessed: summing `fact_shopify_orders.total_price`
+      included 13 "PENDING" orders that hadn't skewed the number wrongly on
+      their own, but the real gap was **returns** -- Shopify's own
+      `total_sales` formula (`gross_sales - discounts - returns + taxes +
+      shipping`) subtracts ₹17,410.90 of processed returns that day, which
+      don't reliably show up in an order's `currentTotalPriceSet` the way
+      the field's name implies they should. Fix, per explicit request
+      ("Total sales should be fetched from Shopify directly"): two new
+      connector methods, `fetchSalesTotals`/`fetchDailySalesTotals`
+      (`connectors/shopify.ts`), pulling Shopify's own `total_sales` via
+      ShopifyQL's `sales` table -- confirmed live to match Shopify's admin
+      dashboard to the rupee. `/shopify/summary` and `/shopify/timeseries`
+      now use this as the primary source for Revenue/Orders/AOV/Discounts,
+      falling back to the old `fact_shopify_orders` sum only if the
+      ShopifyQL call fails. Deliberately scoped to just these two routes
+      (the Shopify page's headline KPIs and "Revenue over time" chart) --
+      Products/Product Quadrants/the Predictive Analysis forecast still
+      read `fact_shopify_orders`/`fact_shopify_line_items` directly since
+      they need per-product/per-customer breakdown this aggregate can't
+      provide, so those can legitimately read a few rupees different from
+      the headline figure now, same "different lens, don't sum them"
+      principle already documented elsewhere in this app.
 
 ## Structure
 

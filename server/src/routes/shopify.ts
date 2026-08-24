@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getPool } from "../db/pool";
 import { asyncHandler } from "../util/asyncHandler";
 import { runShopifySync } from "../etl/shopifySync";
-import { ShopifyConnector } from "../connectors/shopify";
+import { ShopifyConnector, type ShopifySalesTotals, type ShopifyDailySales } from "../connectors/shopify";
 import { fetchGA4ProductSessionsByPlatform } from "../connectors/ga4";
 import { env } from "../config/env";
 import { median, pearsonCorrelation, linearRegression } from "../stats";
@@ -36,6 +36,32 @@ async function fetchTotalSessionsSafe(from: string, to: string): Promise<number 
     return await connector.fetchTotalSessions(from, to);
   } catch (err) {
     console.warn("[shopify] fetchTotalSessions failed, returning null:", err);
+    return null;
+  }
+}
+
+/** Shopify's own "Total sales" figure -- see fetchSalesTotals's doc comment
+ * in connectors/shopify.ts for why this exists and what it fixes (a real
+ * discrepancy vs. summing fact_shopify_orders, confirmed live). Null on
+ * failure so callers fall back to the DB-computed figure rather than
+ * breaking the whole page over one ShopifyQL hiccup -- same convention as
+ * every other ShopifyQL-backed "safe" fetch in this file. */
+async function fetchSalesTotalsSafe(from: string, to: string): Promise<ShopifySalesTotals | null> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchSalesTotals(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchSalesTotals failed, falling back to fact_shopify_orders:", err);
+    return null;
+  }
+}
+
+async function fetchDailySalesTotalsSafe(from: string, to: string): Promise<ShopifyDailySales[] | null> {
+  try {
+    const connector = new ShopifyConnector();
+    return await connector.fetchDailySalesTotals(from, to);
+  } catch (err) {
+    console.warn("[shopify] fetchDailySalesTotals failed, falling back to fact_shopify_orders:", err);
     return null;
   }
 }
@@ -252,7 +278,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows: orderRows }, { rows: lineItemRows }, sessions, sessionsByPlatform] = await Promise.all([
+    const [{ rows: orderRows }, { rows: lineItemRows }, salesTotals, sessions, sessionsByPlatform] = await Promise.all([
       pool.query(
         `select count(*)::float8 as orders,
                 coalesce(sum(total_price), 0)::float8 as revenue,
@@ -267,17 +293,27 @@ shopifyRouter.get(
          where date between $1 and $2`,
         [range.from, range.to]
       ),
+      fetchSalesTotalsSafe(range.from, range.to),
       fetchTotalSessionsSafe(range.from, range.to),
       fetchTotalSessionsByPlatformSafe(range.from, range.to),
     ]);
     const orderRow = orderRows[0];
     const unitsSold = lineItemRows[0].units_sold;
 
+    // Shopify's own "Total sales" (orders/revenue/discounts/AOV, all from
+    // the SAME ShopifyQL call for internal consistency) when available --
+    // falls back to the fact_shopify_orders sum only if that call failed.
+    // See fetchSalesTotals's doc comment for why these two sources
+    // genuinely differ (returns), not just noise.
+    const orders = salesTotals?.orders ?? orderRow.orders;
+    const revenue = salesTotals?.totalSales ?? orderRow.revenue;
+    const discounts = salesTotals?.discounts ?? orderRow.discounts;
+
     const summary: ShopifyOrderSummary = {
-      orders: orderRow.orders,
-      revenue: orderRow.revenue,
-      aov: orderRow.orders > 0 ? orderRow.revenue / orderRow.orders : null,
-      discounts: orderRow.discounts,
+      orders,
+      revenue,
+      aov: orders > 0 ? revenue / orders : null,
+      discounts,
       unitsSold,
       sessions,
       cvr: safeDivide(unitsSold, sessions),
@@ -291,7 +327,13 @@ shopifyRouter.get(
 );
 
 // GET /shopify/timeseries?from&to -- daily points for this page's own
-// "metric over time" chart. Blended Google+Meta spend/ROAS/ACOS is the one
+// "metric over time" chart. Revenue/orders/AOV come from Shopify's own
+// "Total sales" ShopifyQL report when available (see fetchSalesTotals's doc
+// comment -- fact_shopify_orders' own sum can read a few thousand rupees
+// off on a day with processed returns), falling back to the
+// fact_shopify_orders sum only if that call fails. Discounts stays
+// order-level (ShopifyQL's daily grouping doesn't include it, only
+// total_sales/orders). Blended Google+Meta spend/ROAS/ACOS is the one
 // deliberate blending spot here (matches the KPI tiles above it on this
 // page); sessions/CVR come from GA4's stored daily channel data
 // (fact_ga4_channel_daily), not Shopify's own live-only ShopifyQL sessions,
@@ -303,7 +345,7 @@ shopifyRouter.get(
     if (!range) return res.status(400).json({ error: "from/to required, format YYYY-MM-DD, from <= to" });
 
     const pool = getPool();
-    const [{ rows: orderRows }, { rows: spendRows }, { rows: sessionRows }] = await Promise.all([
+    const [{ rows: orderRows }, { rows: spendRows }, { rows: sessionRows }, dailySales] = await Promise.all([
       pool.query(
         `select date::text as date, count(*)::float8 as orders,
                 coalesce(sum(total_price), 0)::float8 as revenue,
@@ -327,15 +369,20 @@ shopifyRouter.get(
          group by date`,
         [range.from, range.to]
       ),
+      fetchDailySalesTotalsSafe(range.from, range.to),
     ]);
 
     const spendByDate = new Map(spendRows.map((r) => [r.date, r.spend as number]));
     const sessionsByDate = new Map(sessionRows.map((r) => [r.date, r.sessions as number]));
+    const salesByDate = new Map((dailySales ?? []).map((d) => [d.date, d]));
 
     const points: ShopifyTimeseriesPoint[] = orderRows
       .map((r) => {
-        const revenue = r.revenue as number;
-        const orders = r.orders as number;
+        const dbRevenue = r.revenue as number;
+        const dbOrders = r.orders as number;
+        const shopifySales = salesByDate.get(r.date);
+        const revenue = shopifySales?.totalSales ?? dbRevenue;
+        const orders = shopifySales?.orders ?? dbOrders;
         const spend = spendByDate.get(r.date) ?? 0;
         const sessions = sessionsByDate.has(r.date) ? sessionsByDate.get(r.date)! : null;
         return {

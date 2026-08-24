@@ -11,6 +11,26 @@ function graphqlUrl(): string {
   return `https://${env.shopify.storeDomain}/admin/api/${API_VERSION}/graphql.json`;
 }
 
+// Shopify's own "Total sales" breakdown for a range -- see
+// fetchSalesTotals's doc comment below for why this exists alongside
+// fact_shopify_orders rather than replacing it.
+export interface ShopifySalesTotals {
+  totalSales: number;
+  netSales: number;
+  grossSales: number;
+  discounts: number;
+  returns: number;
+  taxes: number;
+  shippingCharges: number;
+  orders: number;
+}
+
+export interface ShopifyDailySales {
+  date: string;
+  totalSales: number;
+  orders: number;
+}
+
 interface ShopifyMoneySet {
   shopMoney: { amount: string; currencyCode: string };
 }
@@ -369,6 +389,53 @@ export class ShopifyConnector {
   async fetchTotalSessions(from: string, to: string): Promise<number> {
     const rows = await shopifyQL(`FROM sessions SHOW sessions SINCE ${from} UNTIL ${to}`);
     return Number(rows[0]?.sessions ?? 0);
+  }
+
+  /** Shopify's own "Total sales" figure for the range -- confirmed live
+   * (2026-08-24) this is the exact number Shopify's own Analytics/admin
+   * dashboard shows (₹1,60,448.10 for that day, matched to the rupee), NOT
+   * the same as summing fact_shopify_orders.total_price: Shopify's formula
+   * is gross_sales - discounts - returns + taxes + shipping_charges, and
+   * this account's order-level "returns" (Shopify's Returns feature, e.g.
+   * ₹17,410.90 that day) don't always retroactively show up in an order's
+   * currentTotalPriceSet the way the field name implies they should --
+   * confirmed live, orders count matched exactly (44 = 44) but the sum
+   * didn't, until "returns" was subtracted the way ShopifyQL does it
+   * natively. Used for the Shopify page's headline Revenue/Orders/AOV/
+   * Discounts KPIs and the "Revenue over time" chart -- NOT for anything
+   * needing a per-product or per-customer breakdown (Products, Product
+   * Quadrants, the Predictive Analysis forecast), which still read
+   * fact_shopify_orders/fact_shopify_line_items directly since this
+   * aggregate can't provide that granularity; those can read a few rupees
+   * different from this number as a result, same "different lens, don't
+   * sum them" principle already documented on fact_shopify_orders itself. */
+  async fetchSalesTotals(from: string, to: string): Promise<ShopifySalesTotals> {
+    const rows = await shopifyQL(
+      `FROM sales SHOW net_sales, gross_sales, total_sales, discounts, returns, taxes, shipping_charges, orders SINCE ${from} UNTIL ${to}`
+    );
+    const row = rows[0];
+    return {
+      totalSales: Number(row?.total_sales ?? 0),
+      netSales: Number(row?.net_sales ?? 0),
+      grossSales: Number(row?.gross_sales ?? 0),
+      // ShopifyQL reports discounts/returns as negative (a reduction) --
+      // stored here as positive magnitudes, matching how this app already
+      // shows "Discounts" as a positive figure everywhere else.
+      discounts: Math.abs(Number(row?.discounts ?? 0)),
+      returns: Math.abs(Number(row?.returns ?? 0)),
+      taxes: Number(row?.taxes ?? 0),
+      shippingCharges: Number(row?.shipping_charges ?? 0),
+      orders: Number(row?.orders ?? 0),
+    };
+  }
+
+  /** Same figures as fetchSalesTotals, grouped by day -- powers the
+   * "Revenue over time" chart. Confirmed live within ShopifyQL's 1000-row
+   * cap for any realistic date range (one row per day, not per
+   * landing-page/utm_source long tail like the sessions queries). */
+  async fetchDailySalesTotals(from: string, to: string): Promise<ShopifyDailySales[]> {
+    const rows = await shopifyQL(`FROM sales SHOW total_sales, orders GROUP BY day SINCE ${from} UNTIL ${to} ORDER BY day ASC`);
+    return rows.map((r) => ({ date: r.day, totalSales: Number(r.total_sales ?? 0), orders: Number(r.orders ?? 0) }));
   }
 
   /** Per-product session counts for the range, keyed by product handle.
