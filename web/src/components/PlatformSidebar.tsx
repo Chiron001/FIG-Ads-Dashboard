@@ -57,23 +57,48 @@ function HomeIcon({ size }: { size: number }) {
   );
 }
 
-/** Disclosure chevron for a group with sub-items -- rotates to point down
- * when expanded. Replaces the old "↳" hook-arrow prefix on sub-item labels
- * entirely: that glyph read as ASCII-art, not a real UI affordance (nothing
- * to click, no expand/collapse state). This is the standard tree-disclosure
- * pattern instead -- a dedicated toggle control, sub-items hidden until the
- * group is opened, indicated by rotation + the connector rail below. */
-function ChevronIcon({ size, expanded }: { size: number; expanded: boolean }) {
+/** Disclosure toggle for a group with sub-items -- a self-contained pill
+ * button, not a bare chevron glyph. Idle state reads as a quiet outlined
+ * dot; once expanded it fills with the platform's own accent color (a soft
+ * tint + a matching glow ring) and the chevron inside rotates to point
+ * down, so the "this is open" state is legible at a glance instead of
+ * relying on the tiny rotation alone. Replaces the old "↳" hook-arrow
+ * prefix on sub-item labels entirely: that glyph read as ASCII-art, not a
+ * real UI affordance (nothing to click, no expand/collapse state). */
+function DisclosureToggle({
+  expanded,
+  onClick,
+  ariaLabel,
+  accentColor,
+  size = 22,
+}: {
+  expanded: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  accentColor: string;
+  size?: number;
+}) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      className={`shrink-0 transition-transform duration-[var(--duration-micro)] ${expanded ? "rotate-90" : ""}`}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-label={ariaLabel}
+      style={
+        expanded
+          ? { width: size, height: size, background: `${accentColor}22`, borderColor: "transparent", color: accentColor, boxShadow: `0 0 0 3px ${accentColor}14` }
+          : { width: size, height: size }
+      }
+      className={`shrink-0 flex items-center justify-center rounded-full border transition-all duration-[var(--duration-micro)] active:scale-90 ${
+        expanded
+          ? ""
+          : "border-[var(--sidebar-border)] text-[var(--sidebar-ink-muted)] hover:border-[var(--sidebar-ink-muted)] hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
+      }`}
     >
-      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+      <svg width={12} height={12} viewBox="0 0 16 16" fill="none" className={`shrink-0 transition-transform duration-[var(--duration-micro)] ${expanded ? "rotate-90" : ""}`}>
+        <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
   );
 }
 
@@ -293,15 +318,12 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
                       closing the sub-nav never fights with going to that
                       platform's own page. */}
                   {group && !collapsed && (
-                    <button
-                      type="button"
+                    <DisclosureToggle
+                      expanded={expanded}
                       onClick={() => toggleGroup(group)}
-                      aria-expanded={expanded}
-                      aria-label={expanded ? `Collapse ${PLATFORM_LABELS[platform]} sections` : `Expand ${PLATFORM_LABELS[platform]} sections`}
-                      className="shrink-0 rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
-                    >
-                      <ChevronIcon size={12} expanded={expanded} />
-                    </button>
+                      ariaLabel={expanded ? `Collapse ${PLATFORM_LABELS[platform]} sections` : `Expand ${PLATFORM_LABELS[platform]} sections`}
+                      accentColor={PLATFORM_COLORS[platform]}
+                    />
                   )}
                 </div>
 
@@ -466,15 +488,14 @@ export function PlatformSidebar({ active, onChange, connected, shopifyConnected,
               )}
             </button>
             {!collapsed && (
-              <button
-                type="button"
-                onClick={() => toggleGroup("shopify")}
-                aria-expanded={isGroupExpanded("shopify")}
-                aria-label={isGroupExpanded("shopify") ? "Collapse Shopify sections" : "Expand Shopify sections"}
-                className="mt-4 shrink-0 rounded-md p-1.5 text-[var(--sidebar-ink-muted)] transition-colors hover:bg-[var(--sidebar-hover-bg)] hover:text-[var(--sidebar-ink-secondary)]"
-              >
-                <ChevronIcon size={12} expanded={isGroupExpanded("shopify")} />
-              </button>
+              <span className="mt-4 shrink-0">
+                <DisclosureToggle
+                  expanded={isGroupExpanded("shopify")}
+                  onClick={() => toggleGroup("shopify")}
+                  ariaLabel={isGroupExpanded("shopify") ? "Collapse Shopify sections" : "Expand Shopify sections"}
+                  accentColor={SHOPIFY_COLOR}
+                />
+              </span>
             )}
           </div>
 
